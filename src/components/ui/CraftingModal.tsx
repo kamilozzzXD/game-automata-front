@@ -58,16 +58,21 @@ export function CraftingModal() {
 
     setIsCrafting(true)
     try {
-      const res = await craft({ estado: automatonState, ingrediente: ingredient })
+      const res = await craft({
+        estado_actual: automatonState,
+        ingrediente: ingredient,
+      })
       pushIngredient(ingredient)
-      setAutomatonState(res.estado)
+      setAutomatonState(res.nuevo_estado)
       setLastOutput(res.salida)
 
       if (res.salida === "P") {
         addPotion()
-        pushNotification({ kind: "success", message: "Pocion creada con exito!" })
-      } else if (res.estado === "q_error") {
-        pushNotification({ kind: "error", message: "La mezcla fallo. Limpia el caldero." })
+        pushNotification({ kind: "success", message: res.mensaje_ui })
+      } else if (res.nuevo_estado === "q_error") {
+        pushNotification({ kind: "error", message: res.mensaje_ui })
+      } else {
+        pushNotification({ kind: "info", message: res.mensaje_ui })
       }
     } catch (err) {
       console.error("[v0] Error en /api/craft", err)
