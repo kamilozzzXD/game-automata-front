@@ -1,0 +1,227 @@
+import type { CSSProperties } from "react"
+import {
+  GiOpenTreasureChest,
+  GiPortal,
+  GiSkullCrossedBones,
+  GiTorch,
+} from "react-icons/gi"
+import type { DungeonNodeType } from "../../types/dungeon"
+import type { Size } from "../../types/game"
+
+type Props = {
+  type: DungeonNodeType
+  worldSize: Size
+}
+
+/**
+ * Capa de fondo + decoraciones de la habitacion actual.
+ * No agrega colisiones: el jugador puede pasar por toda la zona,
+ * solo cambia la AMBIENTACION segun el tipo de nodo del AST.
+ */
+export function DungeonRoom({ type, worldSize }: Props) {
+  return (
+    <>
+      {/* Suelo / fondo principal */}
+      <div className="absolute inset-0" style={getRoomStyle(type)} aria-hidden />
+
+      {/* Textura de adoquin sutil para todas las salas */}
+      <div
+        className="absolute inset-0 opacity-25 mix-blend-overlay"
+        style={{
+          backgroundImage:
+            "repeating-linear-gradient(0deg, rgba(0,0,0,0.25) 0 2px, transparent 2px 24px), repeating-linear-gradient(90deg, rgba(0,0,0,0.25) 0 2px, transparent 2px 24px)",
+        }}
+        aria-hidden
+      />
+
+      {/* Decoraciones especificas */}
+      {type === "inicio" && <InicioDecor worldSize={worldSize} />}
+      {type === "pasillo" && <PasilloDecor worldSize={worldSize} />}
+      {type === "sala" && <SalaDecor worldSize={worldSize} />}
+      {type === "jefe" && <JefeDecor worldSize={worldSize} />}
+    </>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Estilos de fondo por tipo. Paleta tematica acotada (3-5 colores totales).
+// ---------------------------------------------------------------------------
+function getRoomStyle(type: DungeonNodeType): CSSProperties {
+  switch (type) {
+    case "inicio":
+      // Verde pantanoso oscuro (transicion natural desde el bosque).
+      return {
+        background:
+          "radial-gradient(ellipse at center, #1f3a2a 0%, #0f1e16 60%, #06100b 100%)",
+      }
+    case "pasillo":
+      // Piedra gris fria con corredor mas claro al centro.
+      return {
+        background:
+          "linear-gradient(180deg, #0f0e0c 0%, #1c1a18 18%, #2a2724 50%, #1c1a18 82%, #0f0e0c 100%)",
+      }
+    case "sala":
+      // Camara mas calida, piedra ocre.
+      return {
+        background:
+          "radial-gradient(ellipse at center, #3a342b 0%, #25201a 60%, #14110d 100%)",
+      }
+    case "jefe":
+      // Rojo profundo, presagio.
+      return {
+        background:
+          "radial-gradient(ellipse at center, #4a1818 0%, #260909 60%, #110404 100%)",
+      }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Decoracion: ENTRADA (nodo inicio) -- runa magica en el suelo.
+// ---------------------------------------------------------------------------
+function InicioDecor({ worldSize }: { worldSize: Size }) {
+  return (
+    <>
+      <GiPortal
+        className="absolute text-emerald-300/20"
+        size={Math.min(worldSize.width, worldSize.height) * 0.7}
+        style={{
+          left: worldSize.width / 2 - (worldSize.height * 0.7) / 2,
+          top: worldSize.height / 2 - (worldSize.height * 0.7) / 2,
+        }}
+        aria-hidden
+      />
+      <div
+        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
+        style={{
+          width: 240,
+          height: 240,
+          boxShadow: "0 0 80px 20px rgba(16, 185, 129, 0.25) inset",
+        }}
+        aria-hidden
+      />
+    </>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Decoracion: PASILLO -- paredes laterales y antorchas.
+// (Solo es visual: NO bloquea el movimiento. La zona jugable sigue completa.)
+// ---------------------------------------------------------------------------
+function PasilloDecor({ worldSize }: { worldSize: Size }) {
+  const wallW = 110
+  return (
+    <>
+      {/* Paredes laterales mas oscuras para sensacion de tunel */}
+      <div
+        className="absolute left-0 top-0 h-full"
+        style={{
+          width: wallW,
+          background:
+            "linear-gradient(90deg, #050402 0%, rgba(5,4,2,0) 100%)",
+        }}
+        aria-hidden
+      />
+      <div
+        className="absolute right-0 top-0 h-full"
+        style={{
+          width: wallW,
+          background:
+            "linear-gradient(270deg, #050402 0%, rgba(5,4,2,0) 100%)",
+        }}
+        aria-hidden
+      />
+
+      {/* Antorchas */}
+      <GiTorch
+        className="absolute text-amber-400 drop-shadow-[0_0_12px_rgba(251,191,36,0.6)]"
+        size={42}
+        style={{ left: 36, top: 80 }}
+        aria-hidden
+      />
+      <GiTorch
+        className="absolute text-amber-400 drop-shadow-[0_0_12px_rgba(251,191,36,0.6)]"
+        size={42}
+        style={{ left: 36, top: worldSize.height - 120 }}
+        aria-hidden
+      />
+      <GiTorch
+        className="absolute text-amber-400 drop-shadow-[0_0_12px_rgba(251,191,36,0.6)]"
+        size={42}
+        style={{ left: worldSize.width - 76, top: 80 }}
+        aria-hidden
+      />
+      <GiTorch
+        className="absolute text-amber-400 drop-shadow-[0_0_12px_rgba(251,191,36,0.6)]"
+        size={42}
+        style={{ left: worldSize.width - 76, top: worldSize.height - 120 }}
+        aria-hidden
+      />
+    </>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Decoracion: SALA SECRETA -- cofre central como anclaje visual.
+// ---------------------------------------------------------------------------
+function SalaDecor({ worldSize }: { worldSize: Size }) {
+  return (
+    <>
+      <div
+        className="absolute rounded-md"
+        style={{
+          left: worldSize.width / 2 - 220,
+          top: worldSize.height / 2 - 140,
+          width: 440,
+          height: 280,
+          border: "2px dashed rgba(251, 191, 36, 0.25)",
+          boxShadow: "0 0 60px rgba(251, 191, 36, 0.08) inset",
+        }}
+        aria-hidden
+      />
+      <GiOpenTreasureChest
+        className="absolute text-amber-300/40"
+        size={140}
+        style={{
+          left: worldSize.width - 180,
+          top: 60,
+        }}
+        aria-hidden
+      />
+    </>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Decoracion: JEFE -- calaveras + iluminacion roja pulsante.
+// ---------------------------------------------------------------------------
+function JefeDecor({ worldSize }: { worldSize: Size }) {
+  const corners = [
+    { left: 24, top: 24 },
+    { left: worldSize.width - 84, top: 24 },
+    { left: 24, top: worldSize.height - 84 },
+    { left: worldSize.width - 84, top: worldSize.height - 84 },
+  ]
+  return (
+    <>
+      {/* Halo rojo pulsante */}
+      <div
+        className="absolute inset-0 animate-pulse"
+        style={{
+          background:
+            "radial-gradient(ellipse at center, rgba(220, 38, 38, 0.18) 0%, transparent 60%)",
+        }}
+        aria-hidden
+      />
+
+      {corners.map((c, i) => (
+        <GiSkullCrossedBones
+          key={i}
+          className="absolute text-red-300/70 drop-shadow-[0_0_10px_rgba(220,38,38,0.7)]"
+          size={60}
+          style={c}
+          aria-hidden
+        />
+      ))}
+    </>
+  )
+}
