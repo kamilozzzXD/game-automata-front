@@ -25,3 +25,21 @@ export function isWithinRadius(
 ): boolean {
   return distance(center(playerPos, playerSize), center(targetPos, targetSize)) <= radius
 }
+
+/**
+ * Interseccion AABB (Axis-Aligned Bounding Box) entre dos rectangulos.
+ * La usamos en la mazmorra para detectar cuando el jugador "cruza" una puerta.
+ */
+export function intersectsAABB(
+  aPos: Vector2D,
+  aSize: Size,
+  bPos: Vector2D,
+  bSize: Size,
+): boolean {
+  return (
+    aPos.x < bPos.x + bSize.width &&
+    aPos.x + aSize.width > bPos.x &&
+    aPos.y < bPos.y + bSize.height &&
+    aPos.y + aSize.height > bPos.y
+  )
+}
