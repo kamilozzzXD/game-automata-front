@@ -4,7 +4,6 @@ import { Cauldron } from "../components/game/Cauldron"
 import { Player } from "../components/game/Player"
 import { Portal } from "../components/game/Portal"
 import { CraftingModal } from "../components/ui/CraftingModal"
-import { DungeonModal } from "../components/ui/DungeonModal"
 import { HUD } from "../components/ui/HUD"
 import { Notifications } from "../components/ui/Notifications"
 import { useGameStore } from "../core/gameStore"
@@ -50,16 +49,15 @@ export function ForestScene() {
   const isCraftingOpen = useGameStore((s) => s.isCraftingOpen)
   const openCrafting = useGameStore((s) => s.openCrafting)
 
-  // Estado de la mazmorra (Sprint 3)
-  const isDungeonOpen = useGameStore((s) => s.isDungeonOpen)
+  // Estado de la mazmorra (Sprint 3 / 3.1: ahora cambia de escena)
   const isGeneratingDungeon = useGameStore((s) => s.isGeneratingDungeon)
-  const openDungeon = useGameStore((s) => s.openDungeon)
   const setIsGeneratingDungeon = useGameStore((s) => s.setIsGeneratingDungeon)
   const setCurrentDungeon = useGameStore((s) => s.setCurrentDungeon)
+  const setCurrentScene = useGameStore((s) => s.setCurrentScene)
   const pushNotification = useGameStore((s) => s.pushNotification)
 
-  // Pausamos el movimiento mientras CUALQUIER modal esta abierto
-  const movementEnabled = !isCraftingOpen && !isDungeonOpen
+  // Pausamos el movimiento mientras se carga la mazmorra o el modal de crafteo esta abierto.
+  const movementEnabled = !isCraftingOpen && !isGeneratingDungeon
   const keysRef = useGameKeyboard(movementEnabled)
 
   usePlayerMovement({
@@ -97,15 +95,16 @@ export function ForestScene() {
     [playerPosition],
   )
 
-  // Disparador del portal: llama al backend, guarda la mazmorra y abre el modal.
+  // Disparador del portal: llama al backend, guarda la mazmorra
+  // y CAMBIA de escena al recibir respuesta exitosa (Sprint 3.1).
   async function triggerDungeon() {
     if (isGeneratingDungeon) return
     setIsGeneratingDungeon(true)
-    openDungeon() // abrimos el modal con estado "tejiendo..."
     try {
       const res = await generateDungeon()
       setCurrentDungeon(res)
       pushNotification({ kind: "info", message: res.mensaje_ui })
+      setCurrentScene("dungeon")
     } catch (err) {
       console.error("[v0] Error generando mazmorra", err)
       pushNotification({
@@ -122,7 +121,7 @@ export function ForestScene() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() !== "e") return
-      if (isCraftingOpen || isDungeonOpen) return
+      if (isCraftingOpen || isGeneratingDungeon) return
       if (isPlayerNearCauldron) {
         e.preventDefault()
         openCrafting()
@@ -138,7 +137,7 @@ export function ForestScene() {
     // triggerDungeon depende de varios setters estables del store; no lo incluimos
     // para evitar recrear el listener en cada render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPlayerNearCauldron, isPlayerNearPortal, isCraftingOpen, isDungeonOpen, openCrafting])
+  }, [isPlayerNearCauldron, isPlayerNearPortal, isCraftingOpen, isGeneratingDungeon, openCrafting])
 
   useEffect(() => {
     const onFocus = () => setHasFocus(true)
@@ -224,7 +223,6 @@ export function ForestScene() {
 
         {/* Modales */}
         <CraftingModal />
-        <DungeonModal />
       </div>
 
       <Notifications />

@@ -54,13 +54,15 @@ type GameStore = {
   pushNotification: (n: Omit<GameNotification, "id">) => void
   removeNotification: (id: number) => void
 
+  // ----- Escena actual (Sprint 3.1) -----
+  // El juego ahora tiene varias escenas; el portal cambia de bosque a mazmorra.
+  currentScene: "forest" | "dungeon"
+  setCurrentScene: (s: "forest" | "dungeon") => void
+
   // ----- Mazmorra (Sprint 3 - GLC) -----
   // Toda la mazmorra llega de golpe en una sola peticion.
-  isDungeonOpen: boolean
   isGeneratingDungeon: boolean
   currentDungeon: DungeonResponse | null
-  openDungeon: () => void
-  closeDungeon: () => void
   setIsGeneratingDungeon: (b: boolean) => void
   setCurrentDungeon: (d: DungeonResponse | null) => void
 }
@@ -109,12 +111,13 @@ export const useGameStore = create<GameStore>((set) => ({
       notifications: state.notifications.filter((x) => x.id !== id),
     })),
 
+  // Escena
+  currentScene: "forest",
+  setCurrentScene: (s) => set({ currentScene: s }),
+
   // Mazmorra
-  isDungeonOpen: false,
   isGeneratingDungeon: false,
   currentDungeon: null,
-  openDungeon: () => set({ isDungeonOpen: true }),
-  closeDungeon: () => set({ isDungeonOpen: false }),
   setIsGeneratingDungeon: (b) => set({ isGeneratingDungeon: b }),
   setCurrentDungeon: (d) => set({ currentDungeon: d }),
 }))
