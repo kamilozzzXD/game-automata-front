@@ -2,13 +2,16 @@ import { useEffect, useMemo, useState } from "react"
 import { GiPineTree } from "react-icons/gi"
 import { Cauldron } from "../components/game/Cauldron"
 import { Player } from "../components/game/Player"
+import { Portal } from "../components/game/Portal"
 import { CraftingModal } from "../components/ui/CraftingModal"
+import { DungeonModal } from "../components/ui/DungeonModal"
 import { HUD } from "../components/ui/HUD"
 import { Notifications } from "../components/ui/Notifications"
 import { useGameStore } from "../core/gameStore"
 import { isWithinRadius } from "../core/geometry"
 import { useGameKeyboard } from "../hooks/useGameKeyboard"
 import { usePlayerMovement } from "../hooks/usePlayerMovement"
+import { generateDungeon } from "../services/api"
 import type { Interactable, Size } from "../types/game"
 
 const WORLD_SIZE: Size = { width: 960, height: 600 }
@@ -17,6 +20,13 @@ const PLAYER_SIZE: Size = { width: 48, height: 48 }
 const CAULDRON: Interactable = {
   id: "cauldron-1",
   position: { x: 720, y: 220 },
+  size: { width: 96, height: 96 },
+  interactionRadius: 90,
+}
+
+const PORTAL: Interactable = {
+  id: "portal-1",
+  position: { x: 120, y: 220 },
   size: { width: 96, height: 96 },
   interactionRadius: 90,
 }
@@ -40,8 +50,16 @@ export function ForestScene() {
   const isCraftingOpen = useGameStore((s) => s.isCraftingOpen)
   const openCrafting = useGameStore((s) => s.openCrafting)
 
-  // Pausamos el movimiento mientras el modal esta abierto
-  const movementEnabled = !isCraftingOpen
+  // Estado de la mazmorra (Sprint 3)
+  const isDungeonOpen = useGameStore((s) => s.isDungeonOpen)
+  const isGeneratingDungeon = useGameStore((s) => s.isGeneratingDungeon)
+  const openDungeon = useGameStore((s) => s.openDungeon)
+  const setIsGeneratingDungeon = useGameStore((s) => s.setIsGeneratingDungeon)
+  const setCurrentDungeon = useGameStore((s) => s.setCurrentDungeon)
+  const pushNotification = useGameStore((s) => s.pushNotification)
+
+  // Pausamos el movimiento mientras CUALQUIER modal esta abierto
+  const movementEnabled = !isCraftingOpen && !isDungeonOpen
   const keysRef = useGameKeyboard(movementEnabled)
 
   usePlayerMovement({
@@ -66,20 +84,61 @@ export function ForestScene() {
     [playerPosition],
   )
 
+  // Distancia jugador <-> portal
+  const isPlayerNearPortal = useMemo(
+    () =>
+      isWithinRadius(
+        playerPosition,
+        PLAYER_SIZE,
+        PORTAL.position,
+        PORTAL.size,
+        PORTAL.interactionRadius,
+      ),
+    [playerPosition],
+  )
+
+  // Disparador del portal: llama al backend, guarda la mazmorra y abre el modal.
+  async function triggerDungeon() {
+    if (isGeneratingDungeon) return
+    setIsGeneratingDungeon(true)
+    openDungeon() // abrimos el modal con estado "tejiendo..."
+    try {
+      const res = await generateDungeon()
+      setCurrentDungeon(res)
+      pushNotification({ kind: "info", message: res.mensaje_ui })
+    } catch (err) {
+      console.error("[v0] Error generando mazmorra", err)
+      pushNotification({
+        kind: "error",
+        message: "No se pudo conectar al oraculo de la mazmorra.",
+      })
+    } finally {
+      setIsGeneratingDungeon(false)
+    }
+  }
+
   // Tecla E para interactuar (separado del movimiento porque es un evento puntual)
   const [hasFocus, setHasFocus] = useState(true)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() !== "e") return
-      if (isCraftingOpen) return
+      if (isCraftingOpen || isDungeonOpen) return
       if (isPlayerNearCauldron) {
         e.preventDefault()
         openCrafting()
+        return
+      }
+      if (isPlayerNearPortal) {
+        e.preventDefault()
+        void triggerDungeon()
       }
     }
     window.addEventListener("keydown", handler)
     return () => window.removeEventListener("keydown", handler)
-  }, [isPlayerNearCauldron, isCraftingOpen, openCrafting])
+    // triggerDungeon depende de varios setters estables del store; no lo incluimos
+    // para evitar recrear el listener en cada render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPlayerNearCauldron, isPlayerNearPortal, isCraftingOpen, isDungeonOpen, openCrafting])
 
   useEffect(() => {
     const onFocus = () => setHasFocus(true)
@@ -133,6 +192,14 @@ export function ForestScene() {
           />
         ))}
 
+        {/* Portal hacia la mazmorra (lado izquierdo del claro) */}
+        <Portal
+          position={PORTAL.position}
+          size={PORTAL.size}
+          isPlayerNear={isPlayerNearPortal}
+          isBusy={isGeneratingDungeon}
+        />
+
         {/* Caldero */}
         <Cauldron
           position={CAULDRON.position}
@@ -155,8 +222,9 @@ export function ForestScene() {
           </div>
         )}
 
-        {/* Modal de crafteo */}
+        {/* Modales */}
         <CraftingModal />
+        <DungeonModal />
       </div>
 
       <Notifications />

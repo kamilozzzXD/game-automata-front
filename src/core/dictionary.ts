@@ -2,6 +2,7 @@
 // que ve el jugador. Regla de oro: el jugador NUNCA debe ver q0, A, P1, etc.
 
 import type { AutomatonState, Ingredient, PotionId, TransitionOutput } from "../types/game"
+import type { DungeonNodeType } from "../types/dungeon"
 
 export const INGREDIENT_NAMES: Record<Ingredient, string> = {
   A: "Agua",
@@ -36,3 +37,21 @@ export function describeCauldronState(state: AutomatonState): string {
 export function isSuccessfulPotion(output: TransitionOutput): output is PotionId {
   return output !== "-" && output !== "P_basura"
 }
+
+// ----- Diccionarios de la Mazmorra (Sprint 3) -----
+// Nombres amigables para los tipos de nodo del AST que devuelve la GLC.
+export const DUNGEON_NODE_NAMES: Record<DungeonNodeType, string> = {
+  inicio: "Entrada",
+  pasillo: "Pasillo",
+  sala: "Sala Secreta",
+  jefe: "Guarida del Jefe",
+}
+
+// Descripciones cortas mostradas debajo de cada nodo en el mapa.
+export const DUNGEON_NODE_DESCRIPTIONS: Record<DungeonNodeType, string> = {
+  inicio: "Aqui empieza tu aventura",
+  pasillo: "Un camino sinuoso",
+  sala: "Tesoros y peligros menores",
+  jefe: "El enemigo final te espera",
+}
+
