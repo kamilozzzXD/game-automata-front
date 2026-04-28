@@ -1,7 +1,7 @@
-import { Cauldron } from './components/Cauldron'
+import { ForestScene } from "./scenes/ForestScene"
 
 function App() {
-  return <Cauldron />
+  return <ForestScene />
 }
 
 export default App
