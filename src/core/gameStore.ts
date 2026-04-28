@@ -6,6 +6,7 @@ import type {
   TransitionOutput,
   Vector2D,
 } from "../types/game"
+import type { DungeonResponse } from "../types/dungeon"
 
 // Sistema de notificaciones flotantes (potion crafted, error, etc.)
 export type GameNotification = {
@@ -52,6 +53,16 @@ type GameStore = {
   notifications: GameNotification[]
   pushNotification: (n: Omit<GameNotification, "id">) => void
   removeNotification: (id: number) => void
+
+  // ----- Mazmorra (Sprint 3 - GLC) -----
+  // Toda la mazmorra llega de golpe en una sola peticion.
+  isDungeonOpen: boolean
+  isGeneratingDungeon: boolean
+  currentDungeon: DungeonResponse | null
+  openDungeon: () => void
+  closeDungeon: () => void
+  setIsGeneratingDungeon: (b: boolean) => void
+  setCurrentDungeon: (d: DungeonResponse | null) => void
 }
 
 let notificationCounter = 0
@@ -97,4 +108,13 @@ export const useGameStore = create<GameStore>((set) => ({
     set((state) => ({
       notifications: state.notifications.filter((x) => x.id !== id),
     })),
+
+  // Mazmorra
+  isDungeonOpen: false,
+  isGeneratingDungeon: false,
+  currentDungeon: null,
+  openDungeon: () => set({ isDungeonOpen: true }),
+  closeDungeon: () => set({ isDungeonOpen: false }),
+  setIsGeneratingDungeon: (b) => set({ isGeneratingDungeon: b }),
+  setCurrentDungeon: (d) => set({ currentDungeon: d }),
 }))
