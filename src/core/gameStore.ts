@@ -1,5 +1,11 @@
 import { create } from "zustand"
-import type { AutomatonState, Ingredient, TransitionOutput, Vector2D } from "../types/game"
+import type {
+  AutomatonState,
+  Ingredient,
+  PotionId,
+  TransitionOutput,
+  Vector2D,
+} from "../types/game"
 
 // Sistema de notificaciones flotantes (potion crafted, error, etc.)
 export type GameNotification = {
@@ -7,6 +13,9 @@ export type GameNotification = {
   kind: "success" | "error" | "info"
   message: string
 }
+
+// Inventario por tipo de pocion: P1..P10 -> cantidad
+export type Inventory = Partial<Record<PotionId, number>>
 
 type GameStore = {
   // ----- Mundo / Jugador -----
@@ -18,7 +27,9 @@ type GameStore = {
   openCrafting: () => void
   closeCrafting: () => void
 
-  // ----- Estado de la Maquina de Mealy (Sprint 1: Alquimia) -----
+  // ----- Estado de la Maquina de Mealy (Sprint 2) -----
+  // El backend ahora se auto-resetea: cualquier mezcla fallida regresa a q0.
+  // El frontend solo refleja el estado y la ultima salida para animaciones.
   automatonState: AutomatonState
   ingredientHistory: Ingredient[]
   lastOutput: TransitionOutput
@@ -27,11 +38,15 @@ type GameStore = {
   pushIngredient: (i: Ingredient) => void
   setLastOutput: (o: TransitionOutput) => void
   setIsCrafting: (b: boolean) => void
-  resetCauldron: () => void
+  // Solo limpia la historia visual del trail (no llama al backend).
+  // Se usa internamente cuando el backend devuelve nuevo_estado === "q0".
+  clearTrail: () => void
 
-  // ----- Inventario (pociones obtenidas) -----
-  potionsCrafted: number
-  addPotion: () => void
+  // ----- Inventario (pociones obtenidas, por tipo) -----
+  inventory: Inventory
+  trashCount: number
+  addPotion: (id: PotionId) => void
+  addTrash: () => void
 
   // ----- Notificaciones -----
   notifications: GameNotification[]
@@ -61,17 +76,16 @@ export const useGameStore = create<GameStore>((set) => ({
     set((state) => ({ ingredientHistory: [...state.ingredientHistory, i] })),
   setLastOutput: (o) => set({ lastOutput: o }),
   setIsCrafting: (b) => set({ isCrafting: b }),
-  resetCauldron: () =>
-    set({
-      automatonState: "q0",
-      ingredientHistory: [],
-      lastOutput: "-",
-      isCrafting: false,
-    }),
+  clearTrail: () => set({ ingredientHistory: [] }),
 
   // Inventario
-  potionsCrafted: 0,
-  addPotion: () => set((state) => ({ potionsCrafted: state.potionsCrafted + 1 })),
+  inventory: {},
+  trashCount: 0,
+  addPotion: (id) =>
+    set((state) => ({
+      inventory: { ...state.inventory, [id]: (state.inventory[id] ?? 0) + 1 },
+    })),
+  addTrash: () => set((state) => ({ trashCount: state.trashCount + 1 })),
 
   // Notificaciones
   notifications: [],
