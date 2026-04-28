@@ -1,4 +1,5 @@
 import type { CraftRequest, CraftResponse } from "../types/game"
+import type { DungeonResponse } from "../types/dungeon"
 
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000"
 
@@ -19,4 +20,22 @@ export async function craft(payload: CraftRequest): Promise<CraftResponse> {
   }
 
   return (await response.json()) as CraftResponse
+}
+
+/**
+ * Llama al backend para generar una mazmorra procedural usando la GLC.
+ * No requiere body: el backend resuelve el simbolo inicial N y devuelve
+ * la cadena plana + el AST listo para renderizar.
+ */
+export async function generateDungeon(): Promise<DungeonResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/generate-dungeon`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  })
+
+  if (!response.ok) {
+    throw new Error(`Error en /api/generate-dungeon: ${response.status}`)
+  }
+
+  return (await response.json()) as DungeonResponse
 }
