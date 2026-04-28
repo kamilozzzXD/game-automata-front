@@ -54,7 +54,7 @@ export const useGameStore = create<GameStore>((set) => ({
   // Maquina de Mealy
   automatonState: "q0",
   ingredientHistory: [],
-  lastOutput: null,
+  lastOutput: "-",
   isCrafting: false,
   setAutomatonState: (s) => set({ automatonState: s }),
   pushIngredient: (i) =>
@@ -65,7 +65,7 @@ export const useGameStore = create<GameStore>((set) => ({
     set({
       automatonState: "q0",
       ingredientHistory: [],
-      lastOutput: null,
+      lastOutput: "-",
       isCrafting: false,
     }),
 
