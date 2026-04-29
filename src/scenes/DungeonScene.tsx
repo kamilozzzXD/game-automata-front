@@ -1,23 +1,28 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   GiDoor,
   GiSkullCrossedBones,
   GiVortex,
   GiWoodenDoor,
 } from "react-icons/gi"
+import { Boss } from "../components/game/Boss"
 import { Player } from "../components/game/Player"
 import { Portal } from "../components/game/Portal"
 import { DungeonRoom } from "../components/game/DungeonRoom"
 import { HUD } from "../components/ui/HUD"
 import { Notifications } from "../components/ui/Notifications"
-import { DUNGEON_NODE_NAMES, DUNGEON_NODE_DESCRIPTIONS } from "../core/dictionary"
+import { PotionHotbar } from "../components/ui/PotionHotbar"
+import { DUNGEON_NODE_NAMES, DUNGEON_NODE_DESCRIPTIONS, POTION_NAMES } from "../core/dictionary"
 import { useGameStore } from "../core/gameStore"
-import { intersectsAABB, isWithinRadius } from "../core/geometry"
+import { center, distance, intersectsAABB, isWithinRadius } from "../core/geometry"
 import { useGameKeyboard } from "../hooks/useGameKeyboard"
+import { useHotbarControls } from "../hooks/useHotbarControls"
 import { usePlayerMovement } from "../hooks/usePlayerMovement"
-import { generateDungeon } from "../services/api"
+import { bossAction, generateDungeon } from "../services/api"
+import { parseBossState } from "../types/boss"
+import type { BossState, BossStimulus } from "../types/boss"
 import type { DungeonNode } from "../types/dungeon"
-import type { Interactable, Size, Vector2D } from "../types/game"
+import type { Interactable, PotionId, Size, Vector2D } from "../types/game"
 
 const WORLD_SIZE: Size = { width: 960, height: 600 }
 const PLAYER_SIZE: Size = { width: 48, height: 48 }
@@ -98,6 +103,27 @@ const EXIT_PORTAL: Interactable = {
   interactionRadius: 90,
 }
 
+// ---------------------------------------------------------------------------
+// Sprint 4: Configuracion del Jefe / Maquina de Moore
+// ---------------------------------------------------------------------------
+const BOSS_SIZE: Size = { width: 80, height: 80 }
+// Lo plantamos al centro de la sala para que el jugador siempre tenga que
+// acercarse para interactuar. La sala del jefe no tiene puertas-hijo,
+// asi que el centro queda libre.
+const BOSS_POSITION: Vector2D = {
+  x: WORLD_SIZE.width / 2 - BOSS_SIZE.width / 2,
+  y: WORLD_SIZE.height / 2 - BOSS_SIZE.height / 2,
+}
+// Umbrales de deteccion (px). Calculo: distancia euclidiana entre centros
+// del jugador y del jefe.
+const VISION_RADIUS = 130 // dentro de este radio -> estimulo "v" (vision)
+const NOISE_RADIUS = 260 // dentro de este radio (y fuera del de vision) -> "r"
+// Periodo del polling de la IA. No tiene sentido spamear /api/boss-action
+// en cada frame; ~600ms da feedback rapido sin saturar el backend.
+const BOSS_TICK_MS = 600
+// Duracion del efecto de invisibilidad (ms). Se consume 1 unidad de P4.
+const INVISIBILITY_MS = 6000
+
 // Configuracion espacial de cada sala visitada. Se cachea por id para que las
 // puertas NO salten de pared al volver a una sala ya explorada.
 type RoomConfig = {
@@ -138,6 +164,15 @@ export function DungeonScene() {
   const setIsGenerating = useGameStore((s) => s.setIsGeneratingDungeon)
   const setCurrentDungeon = useGameStore((s) => s.setCurrentDungeon)
   const pushNotification = useGameStore((s) => s.pushNotification)
+
+  // Sprint 4 - Estado del jefe (Maquina de Moore) e invisibilidad
+  const bossState = useGameStore((s) => s.bossState)
+  const setBossState = useGameStore((s) => s.setBossState)
+  const setBossActionStore = useGameStore((s) => s.setBossAction)
+  const isBossThinking = useGameStore((s) => s.isBossThinking)
+  const setIsBossThinking = useGameStore((s) => s.setIsBossThinking)
+  const resetBoss = useGameStore((s) => s.resetBoss)
+  const setPlayerInvisible = useGameStore((s) => s.setPlayerInvisible)
 
   // Mapa id -> nodo para resolucion O(1).
   const nodeMap = useMemo(() => {
@@ -277,10 +312,12 @@ export function DungeonScene() {
   }, [playerPosition, isInInicio])
 
   // Volver al bosque: spawneamos al jugador a un costado del portal del bosque
-  // para que no quede sobre el (y dispare otra vez la interaccion).
+  // para que no quede sobre el (y dispare otra vez la interaccion). Tambien
+  // apagamos el efecto de invisibilidad para que no se "lleve" al bosque.
   function exitDungeon() {
     setCurrentScene("forest")
     setPlayerPosition({ x: 230, y: 260 })
+    setPlayerInvisible(false)
   }
 
   // Tecla E para activar el portal de salida cuando el jugador esta cerca.
@@ -320,6 +357,153 @@ export function DungeonScene() {
 
   const isBossRoom = currentNode?.tipo === "jefe"
   const hasNoChildren = currentNode && currentNode.conexiones.length === 0
+  // Sala del jefe = nodo "jefe" sin hijos (el ultimo de la rama).
+  const bossPresent = !!isBossRoom && !!hasNoChildren
+
+  // -------------------------------------------------------------------------
+  // Sprint 4 - Llamada a /api/boss-action y aplicacion de la transicion.
+  // Centralizada en un callback para reusarla desde el polling y desde
+  // el handler de "usar Pocion de Invisibilidad".
+  // -------------------------------------------------------------------------
+  const sendBossStimulus = useCallback(
+    async (stimulus: BossStimulus, currentState: BossState) => {
+      if (useGameStore.getState().isBossThinking) return
+      setIsBossThinking(true)
+      try {
+        const res = await bossAction({
+          estado_actual: currentState,
+          estimulo: stimulus,
+        })
+        const parsed = parseBossState(res.nuevo_estado)
+        if (parsed) setBossState(parsed)
+        // La accion viene como string del backend; el store la guarda
+        // como BossAction (cualquier valor inesperado se tolera como string).
+        setBossActionStore(res.accion as never)
+        // Solo notificamos cambios "interesantes" (cuando el estado cambio)
+        // para no spamear el bottom-left con repeticiones.
+        if (parsed && parsed !== currentState) {
+          pushNotification({
+            kind: parsed === "C" ? "error" : parsed === "B" ? "info" : "success",
+            message: res.mensaje_ui,
+          })
+        }
+      } catch (err) {
+        console.error("[v0] Error consultando IA del jefe", err)
+      } finally {
+        setIsBossThinking(false)
+      }
+    },
+    [pushNotification, setBossActionStore, setBossState, setIsBossThinking],
+  )
+
+  // -------------------------------------------------------------------------
+  // Sprint 4 - Reset del jefe al entrar/salir de la sala del jefe
+  // (estado inicial = "A" / Patrullar). Ademas cancelamos cualquier
+  // efecto de invisibilidad activo cuando salimos de mazmorra.
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    if (bossPresent) {
+      resetBoss()
+    }
+  }, [bossPresent, resetBoss])
+
+  // -------------------------------------------------------------------------
+  // Sprint 4 - Polling de la IA (Maquina de Moore).
+  // Cada tick (~600ms) calculamos la distancia jugador<->jefe y deducimos
+  // que estimulo tocaria enviar:
+  //   dist <= VISION_RADIUS  -> "v"
+  //   dist <= NOISE_RADIUS   -> "r"
+  //   sino                   -> sin estimulo (no llamamos al backend)
+  //
+  // OPTIMIZACION: si el estado actual + el estimulo dan la misma
+  // transicion (no cambia de estado), evitamos la llamada para no
+  // saturar el backend cuando el jugador "se queda quieto" en la zona.
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    if (!bossPresent) return
+    let mounted = true
+    const tick = () => {
+      if (!mounted) return
+      // Si el jugador esta invisible no hay deteccion sensorial.
+      // El "p" se dispara explicitamente al beber la pocion (no aqui).
+      const snap = useGameStore.getState()
+      if (snap.isPlayerInvisible) return
+
+      // Tomamos la posicion fresca del jugador en cada tick para
+      // que el ritmo del polling no dependa del re-render de React.
+      const dist = distance(
+        center(snap.playerPosition, PLAYER_SIZE),
+        center(BOSS_POSITION, BOSS_SIZE),
+      )
+
+      let stim: BossStimulus | null = null
+      if (dist <= VISION_RADIUS) stim = "v"
+      else if (dist <= NOISE_RADIUS) stim = "r"
+      if (!stim) return
+
+      // Filtrado: Moore es determinista, hay transiciones que son
+      // identidad (e.g. "C" + "v" = "C", "C" + "r" = "C", "B" + "r" = "B").
+      // Evitamos llamadas redundantes.
+      const cur = snap.bossState
+      if (stim === "v" && cur === "C") return
+      if (stim === "r" && (cur === "B" || cur === "C")) return
+
+      void sendBossStimulus(stim, cur)
+    }
+
+    const interval = window.setInterval(tick, BOSS_TICK_MS)
+    // Tick inmediato al entrar a la sala para no esperar 600ms.
+    tick()
+    return () => {
+      mounted = false
+      window.clearInterval(interval)
+    }
+    // playerPosition NO va aqui: lo leemos via getState() en cada tick
+    // para evitar re-crear el interval en cada frame.
+  }, [bossPresent, sendBossStimulus])
+
+  // -------------------------------------------------------------------------
+  // Sprint 4 - Handler de "usar pocion seleccionada" (tecla Q).
+  // Solo P4 (Pocion de Invisibilidad) tiene efecto activo en este sprint.
+  // Tras activar el efecto, si el jefe esta en B o C disparamos el
+  // estimulo "p" para que el backend lo regrese a un estado calmo.
+  // -------------------------------------------------------------------------
+  const onUsePotion = useCallback(
+    (id: PotionId) => {
+      if (id !== "P4") {
+        // Pocion sin efecto programado todavia. Igual la consumimos
+        // (lo hizo el store) y notificamos al jugador para feedback.
+        pushNotification({
+          kind: "info",
+          message: `Has usado: ${POTION_NAMES[id]} (sin efecto activo aun).`,
+        })
+        return
+      }
+
+      // Activar invisibilidad por INVISIBILITY_MS. Si ya estaba activa,
+      // refrescamos la duracion (el jugador tiende a "stackear" pociones).
+      setPlayerInvisible(true)
+      window.setTimeout(() => setPlayerInvisible(false), INVISIBILITY_MS)
+      pushNotification({
+        kind: "success",
+        message: "Bebes la Pocion de Invisibilidad. Te vuelves translucido.",
+      })
+
+      // Si estamos en la sala del jefe y el jefe ya nos detecto,
+      // mandamos "p" inmediatamente: en Moore, p => C->B, B->A, A->A.
+      const cur = useGameStore.getState().bossState
+      if (bossPresent && (cur === "B" || cur === "C")) {
+        void sendBossStimulus("p", cur)
+      }
+    },
+    [bossPresent, pushNotification, sendBossStimulus, setPlayerInvisible],
+  )
+
+  // Hotbar (Sprint 4): activo siempre que el jugador pueda jugar.
+  useHotbarControls({
+    enabled: movementEnabled,
+    onUsePotion,
+  })
 
   return (
     <main className="flex min-h-screen w-full items-center justify-center bg-background p-4">
@@ -360,11 +544,19 @@ export function DungeonScene() {
           <DoorTile dir={currentConfig.backDir} variant="back" destId={parentId} />
         )}
 
+        {/* Jefe (solo en la sala con tipo "jefe" sin hijos) */}
+        {bossPresent && (
+          <Boss position={BOSS_POSITION} size={BOSS_SIZE} state={bossState} />
+        )}
+
         {/* Jugador */}
         <Player position={playerPosition} size={PLAYER_SIZE} />
 
         {/* HUD compartido (inventario + controles) */}
         <HUD />
+
+        {/* Barra rapida de pociones (Sprint 4) */}
+        <PotionHotbar />
 
         {/* Etiqueta de la sala actual (top center) */}
         {currentNode && (
@@ -385,39 +577,40 @@ export function DungeonScene() {
           </div>
         )}
 
-        {/* Overlay de victoria al llegar al jefe (muestra cierre del nivel) */}
-        {isBossRoom && hasNoChildren && (
-          <div className="pointer-events-none absolute inset-0 z-20 flex items-end justify-center pb-24">
-            <div className="pointer-events-auto flex flex-col items-center gap-3 rounded-xl border border-red-500/60 bg-background/80 px-6 py-4 shadow-2xl backdrop-blur">
-              <GiSkullCrossedBones className="text-red-400" size={36} />
-              <p className="text-center text-sm text-foreground">
-                Has alcanzado al enemigo final.
-                <br />
-                <span className="text-xs text-muted-foreground">
-                  El combate llegara en una proxima actualizacion.
-                </span>
+        {/* Panel discreto en la sala del jefe (Sprint 4):
+            - Muestra el estado/accion actual del automata.
+            - Botones de regenerar y salir, sin tapar al jefe (lateral inf.) */}
+        {bossPresent && (
+          <div className="pointer-events-none absolute bottom-12 left-1/2 z-30 flex -translate-x-1/2 flex-col items-center gap-2">
+            <div className="rounded-md border border-red-500/40 bg-background/85 px-3 py-1.5 text-center shadow backdrop-blur">
+              <p className="flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-wider text-red-300">
+                <GiSkullCrossedBones size={14} />
+                IA del Jefe: estado {bossState}
+                {isBossThinking && (
+                  <GiVortex size={12} className="animate-spin text-amber-300" />
+                )}
               </p>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={regenerate}
-                  disabled={isGenerating}
-                  className="flex items-center gap-1 rounded bg-accent px-3 py-1.5 text-xs font-semibold text-background hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <GiVortex
-                    size={14}
-                    className={isGenerating ? "animate-spin" : undefined}
-                  />
-                  Generar Otra
-                </button>
-                <button
-                  type="button"
-                  onClick={exitDungeon}
-                  className="rounded border border-border bg-background/60 px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-background"
-                >
-                  Volver al Bosque
-                </button>
-              </div>
+              <p className="text-[10px] text-muted-foreground">
+                {bossState === "A"
+                  ? "Patrulla relajada"
+                  : bossState === "B"
+                    ? "En busqueda - alerta"
+                    : "Atacando - ¡huye o usa Invisibilidad!"}
+              </p>
+            </div>
+            <div className="pointer-events-auto flex gap-2">
+              <button
+                type="button"
+                onClick={regenerate}
+                disabled={isGenerating}
+                className="flex items-center gap-1 rounded bg-accent px-2 py-1 text-[10px] font-semibold text-background hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <GiVortex
+                  size={12}
+                  className={isGenerating ? "animate-spin" : undefined}
+                />
+                Otra Mazmorra
+              </button>
             </div>
           </div>
         )}
