@@ -6,13 +6,25 @@ type Props = {
   size: Size
   isPlayerNear: boolean
   isBusy?: boolean
+  // Etiqueta visible bajo el portal (default: "Bosque Profundo").
+  label?: string
+  // Texto que sigue al "Pulsa E" en el prompt de interaccion (default: "para explorar").
+  actionLabel?: string
 }
 
 /**
- * Portal magico hacia las profundidades del bosque.
- * Al interactuar con [E] dispara la generacion de una mazmorra (GLC, Sprint 3).
+ * Portal magico. Por defecto se usa para entrar al "Bosque Profundo" desde el claro,
+ * pero tambien lo reutilizamos en la sala inicial de la mazmorra como puerta de salida.
+ * Al interactuar con [E] el contenedor padre decide que accion ejecutar.
  */
-export function Portal({ position, size, isPlayerNear, isBusy = false }: Props) {
+export function Portal({
+  position,
+  size,
+  isPlayerNear,
+  isBusy = false,
+  label = "Bosque Profundo",
+  actionLabel = "para explorar",
+}: Props) {
   return (
     <div
       className="absolute z-10 flex flex-col items-center"
@@ -48,13 +60,13 @@ export function Portal({ position, size, isPlayerNear, isBusy = false }: Props) 
 
       {/* Etiqueta visible siempre, para que el jugador entienda que es */}
       <div className="absolute -bottom-7 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-background/80 px-2 py-0.5 text-[11px] font-semibold text-foreground/90 shadow">
-        Bosque Profundo
+        {label}
       </div>
 
       {/* Prompt de interaccion */}
       {isPlayerNear && !isBusy && (
         <div className="absolute -top-10 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-accent/60 bg-background/90 px-3 py-1 text-xs font-semibold text-accent shadow-md">
-          Pulsa <kbd className="rounded bg-accent px-1.5 text-background">E</kbd> para explorar
+          Pulsa <kbd className="rounded bg-accent px-1.5 text-background">E</kbd> {actionLabel}
         </div>
       )}
     </div>
