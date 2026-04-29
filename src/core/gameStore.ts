@@ -113,6 +113,56 @@ type GameStore = {
   setIsBossThinking: (b: boolean) => void
   // Reset completo de la IA del jefe (al entrar a la guarida).
   resetBoss: () => void
+
+  // ----- Inventario completo (Sprint 5 - Tarea 1.B) -----
+  // Modal independiente que se abre con la tecla `I`.
+  isInventoryOpen: boolean
+  openInventory: () => void
+  closeInventory: () => void
+
+  // ----- Combate (Sprint 5 - Tarea 2 y siguientes) -----
+  // HP del jugador. La barra es "normal" (cap 100) y se puede recuperar
+  // bebiendo pociones de cura. La logica de daño en el backend usa
+  // sustraccion propia con Maquina de Turing, pero aqui solo guardamos
+  // el resultado.
+  playerHP: number
+  playerMaxHP: number
+  setPlayerHP: (hp: number) => void
+  // Sumar HP por curacion (clamp en max).
+  healPlayer: (amount: number) => void
+  resetPlayerHP: () => void
+
+  // HP del jefe + vidas extra. Cuando la barra principal llega a 0,
+  // restamos un cuadrito de `bossExtraLives`, reseteamos `bossHP`
+  // a `bossMaxHP` y disparamos la fase "furious" si aplica.
+  bossHP: number
+  bossMaxHP: number
+  bossExtraLives: number // empieza en 2 cuadritos
+  bossPhase: "normal" | "furious"
+  setBossHP: (hp: number) => void
+  setBossExtraLives: (n: number) => void
+  setBossPhase: (p: "normal" | "furious") => void
+  resetBossCombat: () => void
+
+  // Flash de impacto: cuando el jugador / jefe recibe daño, parpadeamos
+  // su barra durante un instante. Guardamos el timestamp del ultimo hit.
+  playerHitFlashAt: number
+  bossHitFlashAt: number
+  flashPlayerHit: () => void
+  flashBossHit: () => void
+
+  // Direccion de mira del jugador. Es un vector unitario (o cero).
+  // La actualiza usePlayerMovement cada vez que cambia el input WASD.
+  // Usado para apuntar proyectiles con tecla `J` y para dibujar el
+  // arco/flecha exterior del Player.
+  playerFacing: Vector2D
+  isPlayerMoving: boolean
+  setPlayerFacing: (v: Vector2D) => void
+  setIsPlayerMoving: (b: boolean) => void
+
+  // Game Over / Victoria (vuelve al bosque tras notificar).
+  gameOutcome: "playing" | "victory" | "defeat"
+  setGameOutcome: (s: "playing" | "victory" | "defeat") => void
 }
 
 let notificationCounter = 0
@@ -214,4 +264,46 @@ export const useGameStore = create<GameStore>((set) => ({
   setIsBossThinking: (b) => set({ isBossThinking: b }),
   resetBoss: () =>
     set({ bossState: "A", bossAction: "Patrullar", isBossThinking: false }),
+
+  // Inventario modal
+  isInventoryOpen: false,
+  openInventory: () => set({ isInventoryOpen: true }),
+  closeInventory: () => set({ isInventoryOpen: false }),
+
+  // Combate (jugador)
+  playerHP: 100,
+  playerMaxHP: 100,
+  setPlayerHP: (hp) => set((s) => ({ playerHP: Math.max(0, Math.min(s.playerMaxHP, hp)) })),
+  healPlayer: (amount) =>
+    set((s) => ({
+      playerHP: Math.min(s.playerMaxHP, s.playerHP + Math.max(0, amount)),
+    })),
+  resetPlayerHP: () => set((s) => ({ playerHP: s.playerMaxHP })),
+
+  // Combate (jefe)
+  bossHP: 100,
+  bossMaxHP: 100,
+  bossExtraLives: 2, // inicia con 2 cuadritos -> total 3 barras
+  bossPhase: "normal",
+  setBossHP: (hp) => set({ bossHP: Math.max(0, Math.min(100, hp)) }),
+  setBossExtraLives: (n) => set({ bossExtraLives: Math.max(0, n) }),
+  setBossPhase: (p) => set({ bossPhase: p }),
+  resetBossCombat: () =>
+    set({ bossHP: 100, bossExtraLives: 2, bossPhase: "normal" }),
+
+  // Flash de impacto (timestamp en ms; 0 = sin flash activo)
+  playerHitFlashAt: 0,
+  bossHitFlashAt: 0,
+  flashPlayerHit: () => set({ playerHitFlashAt: Date.now() }),
+  flashBossHit: () => set({ bossHitFlashAt: Date.now() }),
+
+  // Direccion del jugador (Sprint 5 - Tarea 3.B)
+  playerFacing: { x: 0, y: 1 }, // por defecto mira "abajo"
+  isPlayerMoving: false,
+  setPlayerFacing: (v) => set({ playerFacing: v }),
+  setIsPlayerMoving: (b) => set({ isPlayerMoving: b }),
+
+  // Game outcome
+  gameOutcome: "playing",
+  setGameOutcome: (s) => set({ gameOutcome: s }),
 }))

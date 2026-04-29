@@ -13,12 +13,13 @@ import type { IconType } from "react-icons"
 import { useGameStore } from "../../core/gameStore"
 import {
   INGREDIENT_NAMES,
+  POTION_COLORS,
   POTION_NAMES,
   describeCauldronState,
   isSuccessfulPotion,
 } from "../../core/dictionary"
 import { craft } from "../../services/api"
-import type { Ingredient } from "../../types/game"
+import type { Ingredient, PotionId } from "../../types/game"
 
 type IngredientButton = {
   id: Ingredient
@@ -59,6 +60,10 @@ export function CraftingModal() {
   // Animacion temporal de exito / fracaso
   const [flash, setFlash] = useState<FlashKind>(null)
   const [lastPotionName, setLastPotionName] = useState<string | null>(null)
+  // Sprint 5 - Tarea 1.B: guardamos la PotionId concreta para tintar la
+  // animacion del caldero con el color hex unico de esa pocion. Si la
+  // ultima salida fue P_basura, queda en null y caemos a un estilo gris.
+  const [lastPotionId, setLastPotionId] = useState<PotionId | null>(null)
 
   // Cierra con ESC
   useEffect(() => {
@@ -97,12 +102,14 @@ export function CraftingModal() {
         // Pocion exitosa: la sumamos al inventario
         addPotion(res.salida)
         setLastPotionName(POTION_NAMES[res.salida])
+        setLastPotionId(res.salida)
         setFlash("success")
         pushNotification({ kind: "success", message: res.mensaje_ui })
       } else if (res.salida === "P_basura") {
         // Mezcla fallida: el backend ya nos resetea a q0
         addTrash()
         setLastPotionName(POTION_NAMES.P_basura)
+        setLastPotionId(null)
         setFlash("trash")
         pushNotification({ kind: "error", message: res.mensaje_ui })
       } else {
@@ -161,14 +168,42 @@ export function CraftingModal() {
             <div
               className={`relative flex h-40 w-40 items-center justify-center rounded-full transition-all ${
                 flash === "trash"
-                  ? "bg-destructive/20 ring-4 ring-destructive/60 animate-shake"
+                  ? "animate-shake"
                   : flash === "success"
-                    ? "bg-primary/20 ring-4 ring-primary/70 animate-pop"
-                    : "bg-secondary/40 ring-2 ring-border"
+                    ? "animate-pop"
+                    : ""
               }`}
+              // Sprint 5 - Tarea 1.B: el aro/halo del caldero adopta el color
+              // hexadecimal unico de la pocion creada para que el feedback
+              // visual sea inmediatamente reconocible. Cuando no hay flash o
+              // el resultado fue P_basura, caemos al estilo neutral.
+              style={{
+                backgroundColor:
+                  flash === "success" && lastPotionId
+                    ? `${POTION_COLORS[lastPotionId]}33`
+                    : flash === "trash"
+                      ? "rgba(220, 38, 38, 0.2)"
+                      : "rgba(100, 116, 139, 0.2)",
+                boxShadow:
+                  flash === "success" && lastPotionId
+                    ? `0 0 0 4px ${POTION_COLORS[lastPotionId]}B3, 0 0 24px ${POTION_COLORS[lastPotionId]}66`
+                    : flash === "trash"
+                      ? "0 0 0 4px rgba(220, 38, 38, 0.6)"
+                      : "0 0 0 2px rgba(100, 116, 139, 0.4)",
+              }}
             >
               {flash === "success" ? (
-                <GiPotionBall className="text-primary" size={96} />
+                <GiPotionBall
+                  size={96}
+                  style={{
+                    color: lastPotionId
+                      ? POTION_COLORS[lastPotionId]
+                      : "var(--primary)",
+                    filter: lastPotionId
+                      ? `drop-shadow(0 0 12px ${POTION_COLORS[lastPotionId]})`
+                      : undefined,
+                  }}
+                />
               ) : flash === "trash" ? (
                 <GiTrashCan className="text-destructive" size={96} />
               ) : (
@@ -185,9 +220,14 @@ export function CraftingModal() {
                   flash === "trash"
                     ? "text-destructive"
                     : flash === "success"
-                      ? "text-primary"
+                      ? ""
                       : "text-foreground"
                 }`}
+                style={
+                  flash === "success" && lastPotionId
+                    ? { color: POTION_COLORS[lastPotionId] }
+                    : undefined
+                }
               >
                 {flash && lastPotionName ? lastPotionName : cauldronLabel}
               </p>

@@ -5,6 +5,7 @@ import { Player } from "../components/game/Player"
 import { Portal } from "../components/game/Portal"
 import { CraftingModal } from "../components/ui/CraftingModal"
 import { HUD } from "../components/ui/HUD"
+import { InventoryModal } from "../components/ui/InventoryModal"
 import { Notifications } from "../components/ui/Notifications"
 import { PotionHotbar } from "../components/ui/PotionHotbar"
 import { useGameStore } from "../core/gameStore"
@@ -59,8 +60,15 @@ export function ForestScene() {
   const setCurrentScene = useGameStore((s) => s.setCurrentScene)
   const pushNotification = useGameStore((s) => s.pushNotification)
 
-  // Pausamos el movimiento mientras se carga la mazmorra o el modal de crafteo esta abierto.
-  const movementEnabled = !isCraftingOpen && !isGeneratingDungeon
+  // Sprint 5: el modal de inventario completo (tecla `I`) tambien
+  // pausa el movimiento como el de crafteo. Manten la lista corta y
+  // explicita para evitar que se nos olvide alguna pausa.
+  const isInventoryOpen = useGameStore((s) => s.isInventoryOpen)
+  const openInventory = useGameStore((s) => s.openInventory)
+
+  // Pausamos el movimiento mientras se carga la mazmorra o algun modal esta abierto.
+  const movementEnabled =
+    !isCraftingOpen && !isGeneratingDungeon && !isInventoryOpen
   const keysRef = useGameKeyboard(movementEnabled)
 
   // Hotbar (Sprint 4): activo mientras no haya un modal bloqueante.
@@ -149,12 +157,24 @@ export function ForestScene() {
     }
   }
 
-  // Tecla E para interactuar (separado del movimiento porque es un evento puntual)
+  // Tecla E para interactuar + tecla I para abrir inventario completo
+  // (separado del movimiento porque son eventos puntuales).
   const [hasFocus, setHasFocus] = useState(true)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() !== "e") return
-      if (isCraftingOpen || isGeneratingDungeon) return
+      const k = e.key.toLowerCase()
+
+      // I -> abre/cierra el inventario completo. Funciona aunque otros
+      // modales NO esten abiertos. Si ya esta abierto, el propio modal
+      // tiene su listener para cerrarse.
+      if (k === "i" && !isCraftingOpen && !isGeneratingDungeon && !isInventoryOpen) {
+        e.preventDefault()
+        openInventory()
+        return
+      }
+
+      if (k !== "e") return
+      if (isCraftingOpen || isGeneratingDungeon || isInventoryOpen) return
       if (isPlayerNearCauldron) {
         e.preventDefault()
         openCrafting()
@@ -170,7 +190,15 @@ export function ForestScene() {
     // triggerDungeon depende de varios setters estables del store; no lo incluimos
     // para evitar recrear el listener en cada render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPlayerNearCauldron, isPlayerNearPortal, isCraftingOpen, isGeneratingDungeon, openCrafting])
+  }, [
+    isPlayerNearCauldron,
+    isPlayerNearPortal,
+    isCraftingOpen,
+    isGeneratingDungeon,
+    isInventoryOpen,
+    openCrafting,
+    openInventory,
+  ])
 
   useEffect(() => {
     const onFocus = () => setHasFocus(true)

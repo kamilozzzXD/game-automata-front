@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react"
+import { useGameStore } from "../core/gameStore"
 import type { Size, Vector2D } from "../types/game"
 
 type Options = {
@@ -41,11 +42,23 @@ export function usePlayerMovement({
   const posRef = useRef<Vector2D>(position)
   posRef.current = position
 
+  // Helpers del store fuera del rAF para no recrear el listener cada tick.
+  const setPlayerFacing = useGameStore((s) => s.setPlayerFacing)
+  const setIsPlayerMoving = useGameStore((s) => s.setIsPlayerMoving)
+
   useEffect(() => {
-    if (!enabled) return
+    if (!enabled) {
+      // Si pausamos el movimiento, dejamos de "moverse" (apaga el indicador).
+      setIsPlayerMoving(false)
+      return
+    }
 
     let rafId = 0
     let lastTime = performance.now()
+    // Estado local de la mira para evitar escribir al store cuando no cambia.
+    let lastFacingX = 0
+    let lastFacingY = 0
+    let wasMoving = false
 
     const tick = (now: number) => {
       const dt = (now - lastTime) / 1000 // segundos
@@ -60,11 +73,26 @@ export function usePlayerMovement({
       if (keys.has("a") || keys.has("arrowleft")) dx -= 1
       if (keys.has("d") || keys.has("arrowright")) dx += 1
 
-      if (dx !== 0 || dy !== 0) {
+      const moving = dx !== 0 || dy !== 0
+
+      if (moving) {
         // Normalizar diagonal (Pitagoras): |v| = sqrt(dx^2 + dy^2)
         const len = Math.sqrt(dx * dx + dy * dy)
         dx /= len
         dy /= len
+
+        // Actualizamos la direccion de mira solo cuando el vector cambia
+        // (8 direcciones discretas, asi evitamos spamear el store con
+        // valores casi identicos por cuestiones de FPS).
+        if (dx !== lastFacingX || dy !== lastFacingY) {
+          lastFacingX = dx
+          lastFacingY = dy
+          setPlayerFacing({ x: dx, y: dy })
+        }
+        if (!wasMoving) {
+          wasMoving = true
+          setIsPlayerMoving(true)
+        }
 
         const nextX = posRef.current.x + dx * speed * dt
         const nextY = posRef.current.y + dy * speed * dt
@@ -80,6 +108,9 @@ export function usePlayerMovement({
           posRef.current = { x: clampedX, y: clampedY }
           setPosition(posRef.current)
         }
+      } else if (wasMoving) {
+        wasMoving = false
+        setIsPlayerMoving(false)
       }
 
       rafId = requestAnimationFrame(tick)
