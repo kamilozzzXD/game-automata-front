@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { GiPineTree } from "react-icons/gi"
 import { Cauldron } from "../components/game/Cauldron"
 import { Player } from "../components/game/Player"
@@ -6,12 +6,15 @@ import { Portal } from "../components/game/Portal"
 import { CraftingModal } from "../components/ui/CraftingModal"
 import { HUD } from "../components/ui/HUD"
 import { Notifications } from "../components/ui/Notifications"
+import { PotionHotbar } from "../components/ui/PotionHotbar"
 import { useGameStore } from "../core/gameStore"
+import { POTION_NAMES } from "../core/dictionary"
 import { isWithinRadius } from "../core/geometry"
 import { useGameKeyboard } from "../hooks/useGameKeyboard"
+import { useHotbarControls } from "../hooks/useHotbarControls"
 import { usePlayerMovement } from "../hooks/usePlayerMovement"
 import { generateDungeon } from "../services/api"
-import type { Interactable, Size } from "../types/game"
+import type { Interactable, Size, PotionId } from "../types/game"
 
 const WORLD_SIZE: Size = { width: 960, height: 600 }
 const PLAYER_SIZE: Size = { width: 48, height: 48 }
@@ -59,6 +62,36 @@ export function ForestScene() {
   // Pausamos el movimiento mientras se carga la mazmorra o el modal de crafteo esta abierto.
   const movementEnabled = !isCraftingOpen && !isGeneratingDungeon
   const keysRef = useGameKeyboard(movementEnabled)
+
+  // Hotbar (Sprint 4): activo mientras no haya un modal bloqueante.
+  // En el bosque no hay jefe, asi que "usar" una pocion solo notifica.
+  const setPlayerInvisible = useGameStore((s) => s.setPlayerInvisible)
+  const onUsePotion = useCallback(
+    (id: PotionId) => {
+      // Solo P4 hace algo visible por ahora (Pocion de Invisibilidad).
+      // El resto se consume y solo se notifica que se uso (no implementadas).
+      if (id === "P4") {
+        setPlayerInvisible(true)
+        pushNotification({
+          kind: "success",
+          message: "Has bebido la Pocion de Invisibilidad. Te vuelves translucido.",
+        })
+        // Auto-expira a los 6s. En el bosque no afecta al gameplay,
+        // pero queremos que el efecto sea consistente entre escenas.
+        window.setTimeout(() => setPlayerInvisible(false), 6000)
+        return
+      }
+      pushNotification({
+        kind: "info",
+        message: `Has usado: ${POTION_NAMES[id]} (sin efecto activo aun).`,
+      })
+    },
+    [setPlayerInvisible, pushNotification],
+  )
+  useHotbarControls({
+    enabled: movementEnabled,
+    onUsePotion,
+  })
 
   usePlayerMovement({
     position: playerPosition,
@@ -211,6 +244,9 @@ export function ForestScene() {
 
         {/* HUD superpuesto */}
         <HUD />
+
+        {/* Barra rapida de pociones (Sprint 4) */}
+        <PotionHotbar />
 
         {/* Aviso si la ventana no tiene foco */}
         {!hasFocus && (
