@@ -102,6 +102,13 @@ export function HUD() {
         <p>
           <kbd className="rounded bg-muted px-1 text-foreground">E</kbd> interactuar
         </p>
+        <p>
+          <kbd className="rounded bg-muted px-1 text-foreground">Tab</kbd>{" "}
+          <kbd className="rounded bg-muted px-1 text-foreground">↑↓</kbd> hotbar
+        </p>
+        <p>
+          <kbd className="rounded bg-muted px-1 text-foreground">Q</kbd> usar pocion
+        </p>
       </div>
     </>
   )
