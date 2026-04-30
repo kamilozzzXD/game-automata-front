@@ -1120,12 +1120,35 @@ export function DungeonScene() {
           y: ny - projSize.height / 2,
         }
         if (intersectsAABB(projPos, projSize, playerPos, PLAYER_SIZE)) {
-          // Tarea 3.3: aplicar daño al jugador y activar flash visual.
+          // Refactor 3.1: El daño al jugador también pasa por la Máquina de
+          // Turing del backend para mantener consistencia académica.
           const damage = p.kind === "heavy"
             ? BOSS_HEAVY_PROJECTILE_DAMAGE
             : BOSS_BASIC_PROJECTILE_DAMAGE
-          useGameStore.getState().damagePlayer(damage)
-          useGameStore.getState().setPlayerHealthFlash(true)
+          const currentPlayerHp = useGameStore.getState().playerHp
+          // Solo procesamos si el jugador sigue vivo
+          if (currentPlayerHp > 0) {
+            void combatHit({
+              hp_actual: currentPlayerHp,
+              dano_recibido: damage,
+            }).then((res) => {
+              useGameStore.getState().setPlayerHp(res.hp_resultante)
+              useGameStore.getState().setPlayerHealthFlash(true)
+              // Game Over: si hp_resultante === 0, el jugador murió
+              if (res.hp_resultante === 0) {
+                // Reseteamos al bosque con vida completa y posición de spawn
+                useGameStore.getState().setCurrentScene("forest")
+                useGameStore.getState().setPlayerPosition({ x: 230, y: 260 })
+                useGameStore.getState().setPlayerHp(100)
+                useGameStore.getState().setPlayerInvisible(false)
+                useGameStore.getState().resetBoss()
+                // Limpiamos proyectiles del jefe para evitar daño residual
+                setBossProyectiles([])
+              }
+            }).catch((err) => {
+              console.error("[v0] Error en combatHit (jugador):", err)
+            })
+          }
           continue
         }
 
