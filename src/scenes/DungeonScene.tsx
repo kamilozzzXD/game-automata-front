@@ -10,6 +10,8 @@ import { Player } from "../components/game/Player"
 import { Portal } from "../components/game/Portal"
 import { Projectile } from "../components/game/Projectile"
 import { DungeonRoom } from "../components/game/DungeonRoom"
+import { BossHealthBar } from "../components/ui/BossHealthBar"
+import { PlayerHealthBar } from "../components/ui/PlayerHealthBar"
 import { HUD } from "../components/ui/HUD"
 import { Notifications } from "../components/ui/Notifications"
 import { DUNGEON_NODE_NAMES, DUNGEON_NODE_DESCRIPTIONS, POTION_NAMES } from "../core/dictionary"
@@ -18,7 +20,7 @@ import { center, distance, intersectsAABB, isWithinRadius } from "../core/geomet
 import { useGameKeyboard } from "../hooks/useGameKeyboard"
 import { useHotbarControls } from "../hooks/useHotbarControls"
 import { usePlayerMovement } from "../hooks/usePlayerMovement"
-import { bossAction, generateDungeon } from "../services/api"
+import { bossAction, combatHit, generateDungeon } from "../services/api"
 import { parseBossState } from "../types/boss"
 import type { BossState, BossStimulus } from "../types/boss"
 import type { DungeonNode } from "../types/dungeon"
@@ -160,6 +162,9 @@ const NOISE_RADIUS = 260 // dentro de este radio (y fuera del de vision) -> "r"
 const BOSS_TICK_MS = 600
 // Duracion del efecto de invisibilidad (ms). Se consume 1 unidad de P4.
 const INVISIBILITY_MS = 6000
+// Tarea 3.3: curación de las pociones P1 y P5.
+const POTION_P1_HEAL = 25  // Poción Menor de Curación
+const POTION_P5_HEAL = 50  // Poción de Curación Mayor
 
 // ---------------------------------------------------------------------------
 // Tarea 3.1 - Configuracion del sistema de combate del jugador.
@@ -175,6 +180,8 @@ const PROJECTILE_MAX_DISTANCE = 400
 // Cooldown entre disparos para evitar que mantener J pulsada genere
 // 60 proyectiles por segundo.
 const SHOOT_COOLDOWN_MS = 180
+// Tarea 3.3: daño que inflige el proyectil del jugador al jefe.
+const PLAYER_PROJECTILE_DAMAGE = 10
 
 type ProjectileState = {
   id: number
@@ -225,6 +232,9 @@ const BOSS_PATROL_REACHED_EPSILON = 4
 
 // Cooldown entre disparos basicos del jefe (estado C).
 const BOSS_SHOOT_COOLDOWN_MS = 1500
+// Tarea 3.3: daño que infligen los proyectiles del jefe al jugador.
+const BOSS_BASIC_PROJECTILE_DAMAGE = 15
+const BOSS_HEAVY_PROJECTILE_DAMAGE = 25
 
 // Configuracion de los proyectiles del jefe.
 // "Basico": un poco mas grande que el del jugador, mas lento, color rojo.
@@ -460,11 +470,15 @@ export function DungeonScene() {
 
   // Volver al bosque: spawneamos al jugador a un costado del portal del bosque
   // para que no quede sobre el (y dispare otra vez la interaccion). Tambien
-  // apagamos el efecto de invisibilidad para que no se "lleve" al bosque.
+  // apagamos el efecto de invisibilidad y reseteamos la vida del jugador.
+  const setPlayerHp = useGameStore((s) => s.setPlayerHp)
+  
   function exitDungeon() {
     setCurrentScene("forest")
     setPlayerPosition({ x: 230, y: 260 })
     setPlayerInvisible(false)
+    // Tarea 3.3: Al salir de la mazmorra, el jugador recupera toda su vida.
+    setPlayerHp(100)
   }
 
   // Tecla E para activar el portal de salida cuando el jugador esta cerca.
@@ -634,39 +648,59 @@ export function DungeonScene() {
 
   // -------------------------------------------------------------------------
   // Sprint 4 - Handler de "usar pocion seleccionada" (tecla Q).
-  // Solo P4 (Pocion de Invisibilidad) tiene efecto activo en este sprint.
-  // Tras activar el efecto, si el jefe esta en B o C disparamos el
-  // estimulo "p" para que el backend lo regrese a un estado calmo.
+  // P4 (Invisibilidad), P1 (Curación Menor), P5 (Curación Mayor) tienen
+  // efecto activo. Tras activar invisibilidad, si el jefe esta en B o C
+  // disparamos el estimulo "p" para que el backend lo regrese a un estado calmo.
   // -------------------------------------------------------------------------
+  const healPlayer = useGameStore((s) => s.healPlayer)
+
   const onUsePotion = useCallback(
     (id: PotionId) => {
-      if (id !== "P4") {
-        // Pocion sin efecto programado todavia. Igual la consumimos
-        // (lo hizo el store) y notificamos al jugador para feedback.
+      // Tarea 3.3: Pociones de curación
+      if (id === "P1") {
+        healPlayer(POTION_P1_HEAL)
         pushNotification({
-          kind: "info",
-          message: `Has usado: ${POTION_NAMES[id]} (sin efecto activo aun).`,
+          kind: "success",
+          message: `Bebes la Pocion Menor de Curacion. +${POTION_P1_HEAL} HP.`,
+        })
+        return
+      }
+      if (id === "P5") {
+        healPlayer(POTION_P5_HEAL)
+        pushNotification({
+          kind: "success",
+          message: `Bebes la Pocion de Curacion Mayor. +${POTION_P5_HEAL} HP.`,
         })
         return
       }
 
-      // Activar invisibilidad por INVISIBILITY_MS. Si ya estaba activa,
-      // refrescamos la duracion (el jugador tiende a "stackear" pociones).
-      setPlayerInvisible(true)
-      window.setTimeout(() => setPlayerInvisible(false), INVISIBILITY_MS)
-      pushNotification({
-        kind: "success",
-        message: "Bebes la Pocion de Invisibilidad. Te vuelves translucido.",
-      })
+      // P4: Invisibilidad
+      if (id === "P4") {
+        // Activar invisibilidad por INVISIBILITY_MS. Si ya estaba activa,
+        // refrescamos la duracion (el jugador tiende a "stackear" pociones).
+        setPlayerInvisible(true)
+        window.setTimeout(() => setPlayerInvisible(false), INVISIBILITY_MS)
+        pushNotification({
+          kind: "success",
+          message: "Bebes la Pocion de Invisibilidad. Te vuelves translucido.",
+        })
 
-      // Si estamos en la sala del jefe y el jefe ya nos detecto,
-      // mandamos "p" inmediatamente: en Moore, p => C->B, B->A, A->A.
-      const cur = useGameStore.getState().bossState
-      if (bossPresent && (cur === "B" || cur === "C")) {
-        void sendBossStimulus("p", cur)
+        // Si estamos en la sala del jefe y el jefe ya nos detecto,
+        // mandamos "p" inmediatamente: en Moore, p => C->B, B->A, A->A.
+        const cur = useGameStore.getState().bossState
+        if (bossPresent && (cur === "B" || cur === "C")) {
+          void sendBossStimulus("p", cur)
+        }
+        return
       }
+
+      // Otras pociones sin efecto programado todavia
+      pushNotification({
+        kind: "info",
+        message: `Has usado: ${POTION_NAMES[id]} (sin efecto activo aun).`,
+      })
     },
-    [bossPresent, pushNotification, sendBossStimulus, setPlayerInvisible],
+    [bossPresent, healPlayer, pushNotification, sendBossStimulus, setPlayerInvisible],
   )
 
   // Hotbar (Sprint 4): activo siempre que el jugador pueda jugar.
@@ -783,9 +817,21 @@ export function DungeonScene() {
           y: ny - PROJECTILE_SIZE.height / 2,
         }
         if (intersectsAABB(projPos, PROJECTILE_SIZE, bossPos, bossSize)) {
-          // Tarea 3.1 - Spec: con un console.log y destruir el proyectil
-          // basta. La logica de vida/dano queda para una tarea posterior.
-          console.log("[v0] ¡Impacto al Jefe!")
+          // Tarea 3.3: llamar a la API de combate (Máquina de Turing)
+          // para calcular el daño y actualizar la vida del jefe.
+          const currentBossHp = useGameStore.getState().bossHp
+          const bossLives = useGameStore.getState().bossLives
+          // Solo procesamos si el jefe sigue vivo
+          if (bossLives > 0) {
+            void combatHit({
+              hp_actual: currentBossHp,
+              dano_recibido: PLAYER_PROJECTILE_DAMAGE,
+            }).then((res) => {
+              useGameStore.getState().applyBossDamage(res.hp_resultante)
+            }).catch((err) => {
+              console.error("[v0] Error en combatHit (jefe):", err)
+            })
+          }
           continue
         }
 
@@ -1074,11 +1120,12 @@ export function DungeonScene() {
           y: ny - projSize.height / 2,
         }
         if (intersectsAABB(projPos, projSize, playerPos, PLAYER_SIZE)) {
-          // Tarea 3.2 - Spec: con un console.log basta. La barra de HP
-          // del jugador la conectara la Tarea 3.3.
-          console.log(
-            `[v0] ¡Impacto al Jugador! (proyectil ${p.kind} del jefe)`,
-          )
+          // Tarea 3.3: aplicar daño al jugador y activar flash visual.
+          const damage = p.kind === "heavy"
+            ? BOSS_HEAVY_PROJECTILE_DAMAGE
+            : BOSS_BASIC_PROJECTILE_DAMAGE
+          useGameStore.getState().damagePlayer(damage)
+          useGameStore.getState().setPlayerHealthFlash(true)
           continue
         }
 
@@ -1196,13 +1243,23 @@ export function DungeonScene() {
         {/* Jugador */}
         <Player position={playerPosition} size={PLAYER_SIZE} />
 
+        {/* Tarea 3.3: Barra de vida del Jefe (solo en la sala del jefe) */}
+        {bossPresent && <BossHealthBar />}
+
+        {/* Tarea 3.3: Barra de vida del Jugador */}
+        <PlayerHealthBar />
+
         {/* HUD compartido (inventario + controles + hotbar
             integrada en la columna izquierda - Sprint Polish-Pass T1). */}
         <HUD />
 
-        {/* Etiqueta de la sala actual (top center) */}
+        {/* Etiqueta de la sala actual (top center).
+            Tarea 3.3: cuando está el jefe, la etiqueta se mueve más abajo
+            para no tapar la barra de vida del jefe. */}
         {currentNode && (
-          <div className="pointer-events-none absolute left-1/2 top-4 z-30 flex -translate-x-1/2 flex-col items-center gap-1">
+          <div className={`pointer-events-none absolute left-1/2 z-30 flex -translate-x-1/2 flex-col items-center gap-1 ${
+            bossPresent ? "top-16" : "top-4"
+          }`}>
             <div className="rounded-full border border-border/60 bg-background/85 px-4 py-1 text-sm font-bold text-foreground shadow backdrop-blur">
               {DUNGEON_NODE_NAMES[currentNode.tipo]}
             </div>

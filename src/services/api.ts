@@ -1,4 +1,4 @@
-import type { CraftRequest, CraftResponse } from "../types/game"
+import type { CombatRequest, CombatResponse, CraftRequest, CraftResponse } from "../types/game"
 import type { DungeonResponse } from "../types/dungeon"
 import type { BossRequest, BossResponse } from "../types/boss"
 
@@ -60,4 +60,23 @@ export async function bossAction(payload: BossRequest): Promise<BossResponse> {
   }
 
   return (await response.json()) as BossResponse
+}
+
+/**
+ * Tarea 3.3 - Sistema de combate (Máquina de Turing).
+ * Llama al backend para ejecutar la sustracción propia en la cinta de Turing.
+ * Recibe HP actual + daño y devuelve el HP resultante (nunca negativo).
+ */
+export async function combatHit(payload: CombatRequest): Promise<CombatResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/combat/hit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
+
+  if (!response.ok) {
+    throw new Error(`Error en /api/combat/hit: ${response.status}`)
+  }
+
+  return (await response.json()) as CombatResponse
 }

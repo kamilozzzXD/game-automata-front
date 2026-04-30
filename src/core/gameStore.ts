@@ -147,6 +147,37 @@ type GameStore = {
   // Apaga el modo (lo usamos al resetear el jefe / cambiar de mazmorra
   // y en el boton de debug).
   desactivarModoFuria: () => void
+
+  // ----- Tarea 3.3 - Sistema de Vida (Máquina de Turing) -----
+  //
+  // Vida del Jugador: una sola barra de 100 HP.
+  // Las pociones P1 (Menor de Curación) y P5 (Curación Mayor) la restauran.
+  playerHp: number
+  setPlayerHp: (hp: number) => void
+  // Suma HP acotada: Math.min(playerHp + curacion, 100).
+  healPlayer: (amount: number) => void
+  // Resta HP (llamada cuando un proyectil del jefe impacta).
+  damagePlayer: (amount: number) => void
+
+  // Vida del Jefe: 2 barras de 100 HP cada una.
+  // bossHp = HP de la barra actual (0-100).
+  // bossLives = número de barras restantes (2 = intacto, 1 = fase 2, 0 = muerto).
+  bossHp: number
+  bossLives: number
+  setBossHp: (hp: number) => void
+  setBossLives: (lives: number) => void
+  // Llamada cuando el proyectil del jugador impacta y la API responde.
+  // Maneja la lógica de cambio de fase y activación del Modo Furia.
+  applyBossDamage: (newHp: number) => void
+  // Reset completo de la vida del jefe (al entrar a una sala del jefe nueva).
+  resetBossHealth: () => void
+
+  // Flag para feedback visual: hace parpadear la barra del jefe brevemente.
+  bossHealthFlash: boolean
+  setBossHealthFlash: (b: boolean) => void
+  // Flag para feedback visual: hace parpadear la barra del jugador brevemente.
+  playerHealthFlash: boolean
+  setPlayerHealthFlash: (b: boolean) => void
 }
 
 let notificationCounter = 0
@@ -260,10 +291,71 @@ export const useGameStore = create<GameStore>((set) => ({
       // Al entrar a una sala del jefe nueva, asumimos Vida 1 intacta:
       // por lo tanto el modo furia debe arrancar apagado.
       isBossFurious: false,
+      // Tarea 3.3: resetear también la vida del jefe
+      bossHp: 100,
+      bossLives: 2,
+      bossHealthFlash: false,
     }),
 
   // Modo Furia (Tarea 3.2 - handoff a Tarea 3.3).
   isBossFurious: false,
   activarModoFuria: () => set({ isBossFurious: true }),
   desactivarModoFuria: () => set({ isBossFurious: false }),
+
+  // ----- Tarea 3.3 - Sistema de Vida (Máquina de Turing) -----
+  // Jugador
+  playerHp: 100,
+  setPlayerHp: (hp) => set({ playerHp: Math.max(0, Math.min(100, hp)) }),
+  healPlayer: (amount) =>
+    set((state) => ({
+      playerHp: Math.min(state.playerHp + amount, 100),
+    })),
+  damagePlayer: (amount) =>
+    set((state) => ({
+      playerHp: Math.max(state.playerHp - amount, 0),
+    })),
+
+  // Jefe
+  bossHp: 100,
+  bossLives: 2,
+  setBossHp: (hp) => set({ bossHp: Math.max(0, Math.min(100, hp)) }),
+  setBossLives: (lives) => set({ bossLives: Math.max(0, Math.min(2, lives)) }),
+  applyBossDamage: (newHp) =>
+    set((state) => {
+      // Si la barra actual llega a 0 y quedan 2 vidas (primera fase)
+      if (newHp === 0 && state.bossLives === 2) {
+        // Cambio de fase: activar Modo Furia y rellenar barra
+        return {
+          bossHp: 100,
+          bossLives: 1,
+          isBossFurious: true,
+          bossHealthFlash: true,
+        }
+      }
+      // Si la barra actual llega a 0 y solo queda 1 vida -> jefe muere
+      if (newHp === 0 && state.bossLives === 1) {
+        return {
+          bossHp: 0,
+          bossLives: 0,
+          bossHealthFlash: true,
+        }
+      }
+      // Daño normal (sin matar la barra)
+      return {
+        bossHp: newHp,
+        bossHealthFlash: true,
+      }
+    }),
+  resetBossHealth: () =>
+    set({
+      bossHp: 100,
+      bossLives: 2,
+      bossHealthFlash: false,
+    }),
+
+  // Feedback visual
+  bossHealthFlash: false,
+  setBossHealthFlash: (b) => set({ bossHealthFlash: b }),
+  playerHealthFlash: false,
+  setPlayerHealthFlash: (b) => set({ playerHealthFlash: b }),
 }))
