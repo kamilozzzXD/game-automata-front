@@ -202,3 +202,117 @@ limpieza por distancia (>400px) o salida de pantalla.
 - El indicador de apuntado se ancla al store (`isPlayerMoving`) para que
   funcione idéntico en bosque y mazmorra — sin tener que pasar props
   hasta `Player`.
+
+### Tarea 3.2 — Combate del Jefe (Moore AI Action) y Modo Furia
+
+**Spec corta:** materializar el comportamiento del Jefe según su Máquina de
+Moore: en estado **A** patrulla lentamente, en estado **B** se queda quieto
+"buscando", en estado **C** persigue al jugador y dispara cada 1.5s. Sus
+proyectiles viven en un array **separado** del jugador y solo colisionan
+contra él. Implementar el **Modo Furia** (Fase 2) como toggle debug
+porque el sistema de HP (Tarea 3.3) aún no existe: cuando está activo,
+cada disparo del jefe en estado C se sortea 50/50 entre Ataque Básico y
+**Ataque Pesado**, que es 2x más grande, 20% más lento y se **fragmenta
+en 8 esquirlas básicas** al expirar (vectores cardinales y diagonales
+normalizados con 0.707).
+
+**Archivos modificados:**
+
+- `src/core/gameStore.ts` — Tres adiciones para el handoff a Tarea 3.3:
+  - `isBossFurious: boolean`
+  - `activarModoFuria()` — la Tarea 3.3 debe llamar a este método
+    *exactamente* desde el evento "Vida 1 == 0" del jefe.
+  - `desactivarModoFuria()` — para reset / debug.
+  - `resetBoss()` ahora también pone `isBossFurious=false` (al entrar a
+    una sala del jefe nueva, se asume Vida 1 intacta).
+
+- `src/components/game/Projectile.tsx` — Nueva prop `variant`:
+  - `"player"` (default) — `accent` amarillo.
+  - `"boss-basic"` — rojo saturado, mismo tamaño base.
+  - `"boss-heavy"` — morado oscuro con anillo + halo pulsante grande.
+  El componente sigue siendo puramente decorativo: la lógica vive en la
+  escena.
+
+- `src/scenes/DungeonScene.tsx` — Refactor extenso:
+  1. **`bossPosition`** pasó de `useMemo` a `useState<Vector2D>`. Se
+     espejea en `bossPositionRef` para que el polling de la IA y los
+     game loops de proyectiles no se reconstruyan a 60fps.
+  2. Las dependencias `bossPosition` se eliminaron del `useEffect` del
+     polling y del `useEffect` del loop de proyectiles del jugador. Ambos
+     ahora leen vía `bossPositionRef.current`.
+  3. **Nuevo game loop del jefe** (un único `requestAnimationFrame` que
+     vive en su propio `useEffect`):
+     - **Movimiento por estado de Moore.**
+       - `A` → patrullaje. Elige un punto aleatorio dentro de un radio
+         de 150px, camina a 1 px/frame; al llegar (distancia ≤ 4)
+         reelige. Clampea a `[BOSS_WORLD_MARGIN, world - size - margin]`.
+       - `B` → quieto. Resetea el target de patrullaje.
+       - `C` → persecución. Avanza a 2 px/frame hacia el centro del
+         jugador, respetando una distancia mínima de 60px (evita que
+         su sprite se monte sobre el del jugador).
+     - **Cooldown de disparo** (`BOSS_SHOOT_COOLDOWN_MS = 1500`). Solo
+       dispara en estado `C`. Cada disparo apunta al jugador en el
+       momento exacto del shot (vector normalizado jefe→jugador).
+     - **Modo Furia.** Si `isBossFurious=true`, cada disparo sortea
+       `Math.random() <= 0.5`: pesado / básico.
+     - **Movimiento de los proyectiles del jefe + colisión vs jugador**
+       (AABB). El proyectil pesado, al expirar por
+       `BOSS_HEAVY_PROJECTILE_MAX_DISTANCE = 320` SIN haber tocado al
+       jugador, se sustituye por **8 proyectiles básicos** en sus
+       coordenadas con vectores `ESQUIRLAS_8_DIR` (N/S/E/O y diagonales).
+     - **Limpieza.** Al salir de la sala del jefe se vacía el array y
+       se resetean refs (`patrolTargetRef`, `lastBossShotAtRef`).
+     - **Nota crítica de concurrencia:** el spawn de un nuevo proyectil
+       y el step del array completo se consolidan en **un único
+       `setBossProyectiles`** por frame (helper `buildBossShotAtPlayer`
+       devuelve el objeto sin tocar el state, y `stepBossProjectiles`
+       acepta un `pendingSpawn` que adjunta al final). Sin esto, la
+       segunda escritura no funcional del frame pisaría a la primera.
+  4. **Botón debug "Activar Furia / Desactivar Furia"** en el panel
+     inferior central de la sala del jefe. Cambia el badge "FURIA" del
+     panel de estado y el color del borde. Comentado para que el
+     próximo dev sepa que su trabajo es **reemplazarlo por el evento
+     "Vida 1 == 0"** y llamar a `useGameStore.getState().activarModoFuria()`.
+  5. **Render.** Los proyectiles del jefe se pintan **antes** que los
+     del jugador para que en colisiones visuales el del jugador quede
+     encima, y el jugador se pinta encima de todos los proyectiles.
+
+**Constantes nuevas (en `DungeonScene.tsx`):**
+
+| Constante | Valor | Propósito |
+|---|---|---|
+| `BOSS_PATROL_SPEED` | 1 px/frame | Estado A. |
+| `BOSS_ATTACK_SPEED` | 2 px/frame | Estado C. |
+| `BOSS_MIN_DISTANCE_TO_PLAYER` | 60 | Persecución no se monta sobre el jugador. |
+| `BOSS_PATROL_RADIUS` | 150 | Radio para escoger nuevo target en A. |
+| `BOSS_PATROL_REACHED_EPSILON` | 4 | Tolerancia para "ya llegué". |
+| `BOSS_SHOOT_COOLDOWN_MS` | 1500 | Cadencia de disparo en C. |
+| `BOSS_BASIC_PROJECTILE_SIZE` | 18×18 | Algo mayor que el del jugador. |
+| `BOSS_BASIC_PROJECTILE_SPEED` | 4 px/frame | |
+| `BOSS_BASIC_PROJECTILE_MAX_DISTANCE` | 600 | |
+| `BOSS_HEAVY_PROJECTILE_SIZE` | 36×36 | 2× el básico (spec). |
+| `BOSS_HEAVY_PROJECTILE_SPEED` | 3.2 px/frame | 80% del básico (spec). |
+| `BOSS_HEAVY_PROJECTILE_MAX_DISTANCE` | 320 | Antes fragmenta en 8. |
+| `ESQUIRLAS_8_DIR` | 8 vectores unitarios | Las 8 direcciones de la fragmentación (0.707 normaliza diagonales). |
+
+**Handoff explícito a Tarea 3.3 (HP del Jefe):**
+
+> Cuando el sistema de vida del jefe detecte el evento `Vida 1 == 0`,
+> debe llamar a `useGameStore.getState().activarModoFuria()`. El
+> bucle del jefe ya está suscrito a `isBossFurious` y comenzará a
+> usar Ataques Pesados aleatorios automáticamente. El botón debug
+> del panel se puede borrar entonces.
+
+**Notas de diseño:**
+- Mantenemos `bossProyectiles` y `proyectiles` (jugador) en arrays
+  separados por dos razones: (1) las colisiones evalúan bandos
+  diferentes, (2) sus tamaños/velocidades/colores son distintos y
+  meterlos en el mismo array obligaría a un campo `team` que solo
+  añade ruido.
+- El `Modo Furia` se subió al **store** (no a un useState local) porque
+  la Tarea 3.3 lo activará desde un módulo distinto (el componente de
+  HP del jefe), y Zustand permite que cualquier consumidor lo lea o lo
+  invoque sin pasar props.
+- Las constantes de combate están **arriba del archivo**, todas
+  juntas y comentadas, para que un game-designer pueda tunear sin
+  tocar la lógica.
