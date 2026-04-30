@@ -15,11 +15,6 @@ import App from './App.tsx'
 //   LocatorJS necesita para mapear el DOM al archivo fuente, por lo que
 //   no hace falta ningun plugin adicional.
 // - El `import()` dinamico evita siquiera resolver el modulo en produccion.
-if (import.meta.env.DEV) {
-  import('@locator/runtime').then(({ default: setupLocatorUI }) => {
-    setupLocatorUI()
-  })
-}
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
