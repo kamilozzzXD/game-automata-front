@@ -40,6 +40,17 @@ type GameStore = {
   playerPosition: Vector2D
   setPlayerPosition: (pos: Vector2D) => void
 
+  // ----- Orientacion del jugador (Tarea 3.1) -----
+  // Ultimo vector de direccion conocido. Se actualiza mientras el jugador
+  // se mueve y se CONSERVA cuando suelta las teclas (asi sabemos hacia
+  // donde disparar si esta quieto). Default: mirando hacia abajo.
+  lastDirection: Vector2D
+  setLastDirection: (v: Vector2D) => void
+  // Flag que indica si el jugador esta presionando teclas de movimiento.
+  // Lo usa el indicador visual de apuntado para mostrarse/ocultarse.
+  isPlayerMoving: boolean
+  setIsPlayerMoving: (b: boolean) => void
+
   // ----- UI / Escena -----
   isCraftingOpen: boolean
   openCrafting: () => void
@@ -121,6 +132,12 @@ export const useGameStore = create<GameStore>((set) => ({
   // Mundo
   playerPosition: { x: 400, y: 300 },
   setPlayerPosition: (pos) => set({ playerPosition: pos }),
+
+  // Orientacion (Tarea 3.1)
+  lastDirection: { x: 0, y: 1 },
+  setLastDirection: (v) => set({ lastDirection: v }),
+  isPlayerMoving: false,
+  setIsPlayerMoving: (b) => set({ isPlayerMoving: b }),
 
   // UI
   isCraftingOpen: false,
