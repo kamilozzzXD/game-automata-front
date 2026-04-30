@@ -1,12 +1,15 @@
 // Tipos del Sprint 4: IA del Jefe (Maquina de Moore).
 // Q (estados) = A | B | C
-// Sigma (entrada) = r (ruido) | v (vision) | p (perdida de vision)
+// Sigma (entrada) = r (ruido) | v (vision) | p (perdida de vision) | h (hostilidad/hit)
 // Gamma (salida) = "Patrullar" | "Buscar" | "Atacar"
 // Las cadenas se mantienen como string en la respuesta para tolerar
 // que el backend evolucione, pero internamente trabajamos con uniones.
+//
+// Fase 4 (3.2): Se agrega el estímulo "h" (hostilidad) para que el jefe
+// reaccione cuando recibe un impacto o cuando un proyectil pasa muy cerca.
 
 export type BossState = "A" | "B" | "C"
-export type BossStimulus = "r" | "v" | "p"
+export type BossStimulus = "r" | "v" | "p" | "h"
 export type BossAction = "Patrullar" | "Buscar" | "Atacar"
 
 // Payload que enviamos al endpoint POST /api/boss-action.
