@@ -55,3 +55,20 @@ export type Interactable = {
   size: Size
   interactionRadius: number
 }
+
+// ---------------------------------------------------------------------------
+// Tarea 3.3 - Sistema de combate (Máquina de Turing para sustracción propia)
+// ---------------------------------------------------------------------------
+
+// Payload para POST /api/combat/hit (cálculo de daño via Turing)
+export type CombatRequest = {
+  hp_actual: number      // La vida que tiene el objetivo ANTES del golpe
+  dano_recibido: number  // Cuánto daño hace el proyectil
+}
+
+// Respuesta del endpoint /api/combat/hit
+export type CombatResponse = {
+  hp_resultante: number  // La vida exacta después del cálculo de Turing
+  cinta_final: string    // (Debug) El estado de la cinta de la máquina
+  mensaje_ui: string     // Mensaje para mostrar al jugador
+}
