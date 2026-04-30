@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react"
+import { useGameStore } from "../core/gameStore"
 import type { Size, Vector2D } from "../types/game"
 
 type Options = {
@@ -41,8 +42,23 @@ export function usePlayerMovement({
   const posRef = useRef<Vector2D>(position)
   posRef.current = position
 
+  // Tarea 3.1 - Refs para no spamear setters de Zustand cada frame.
+  // Solo escribimos al store cuando el VALOR realmente cambia.
+  const lastDirRef = useRef<Vector2D>({ x: 0, y: 1 })
+  const isMovingRef = useRef<boolean>(false)
+
   useEffect(() => {
-    if (!enabled) return
+    if (!enabled) {
+      // Si el movimiento se deshabilita (modal abierto, generando mazmorra,
+      // cambio de escena), forzamos a "quieto" para que el indicador
+      // de apuntado se oculte. NO tocamos lastDirection a proposito:
+      // queremos conservar la ultima orientacion entre escenas.
+      if (isMovingRef.current) {
+        isMovingRef.current = false
+        useGameStore.getState().setIsPlayerMoving(false)
+      }
+      return
+    }
 
     let rafId = 0
     let lastTime = performance.now()
@@ -66,6 +82,21 @@ export function usePlayerMovement({
         dx /= len
         dy /= len
 
+        // Tarea 3.1 - Sistema de 8 direcciones.
+        // Guardamos el vector normalizado como "ultima direccion conocida"
+        // para que el sistema de disparo sepa hacia donde lanzar el
+        // proyectil incluso si el jugador suelta las teclas.
+        const prev = lastDirRef.current
+        if (prev.x !== dx || prev.y !== dy) {
+          const next = { x: dx, y: dy }
+          lastDirRef.current = next
+          useGameStore.getState().setLastDirection(next)
+        }
+        if (!isMovingRef.current) {
+          isMovingRef.current = true
+          useGameStore.getState().setIsPlayerMoving(true)
+        }
+
         const nextX = posRef.current.x + dx * speed * dt
         const nextY = posRef.current.y + dy * speed * dt
 
@@ -80,6 +111,12 @@ export function usePlayerMovement({
           posRef.current = { x: clampedX, y: clampedY }
           setPosition(posRef.current)
         }
+      } else if (isMovingRef.current) {
+        // Tarea 3.1 - El jugador acaba de soltar las teclas.
+        // CONSERVAMOS lastDirection (no la reseteamos) para que el
+        // disparo en quietud apunte al ultimo lado mirado.
+        isMovingRef.current = false
+        useGameStore.getState().setIsPlayerMoving(false)
       }
 
       rafId = requestAnimationFrame(tick)
