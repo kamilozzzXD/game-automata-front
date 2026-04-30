@@ -13,12 +13,13 @@ import type { IconType } from "react-icons"
 import { useGameStore } from "../../core/gameStore"
 import {
   INGREDIENT_NAMES,
+  POTION_COLORS,
   POTION_NAMES,
   describeCauldronState,
   isSuccessfulPotion,
 } from "../../core/dictionary"
 import { craft } from "../../services/api"
-import type { Ingredient } from "../../types/game"
+import type { Ingredient, PotionId } from "../../types/game"
 
 type IngredientButton = {
   id: Ingredient
@@ -59,6 +60,9 @@ export function CraftingModal() {
   // Animacion temporal de exito / fracaso
   const [flash, setFlash] = useState<FlashKind>(null)
   const [lastPotionName, setLastPotionName] = useState<string | null>(null)
+  // Sprint Polish-Pass - Tarea 2: guardamos el id de la ultima pocion exitosa
+  // para colorear el feedback visual del caldero con su color caracteristico.
+  const [lastPotionId, setLastPotionId] = useState<PotionId | null>(null)
 
   // Cierra con ESC
   useEffect(() => {
@@ -97,12 +101,14 @@ export function CraftingModal() {
         // Pocion exitosa: la sumamos al inventario
         addPotion(res.salida)
         setLastPotionName(POTION_NAMES[res.salida])
+        setLastPotionId(res.salida)
         setFlash("success")
         pushNotification({ kind: "success", message: res.mensaje_ui })
       } else if (res.salida === "P_basura") {
         // Mezcla fallida: el backend ya nos resetea a q0
         addTrash()
         setLastPotionName(POTION_NAMES.P_basura)
+        setLastPotionId(null)
         setFlash("trash")
         pushNotification({ kind: "error", message: res.mensaje_ui })
       } else {
@@ -168,7 +174,12 @@ export function CraftingModal() {
               }`}
             >
               {flash === "success" ? (
-                <GiPotionBall className="text-primary" size={96} />
+                <GiPotionBall
+                  className={
+                    lastPotionId ? POTION_COLORS[lastPotionId].text : "text-primary"
+                  }
+                  size={96}
+                />
               ) : flash === "trash" ? (
                 <GiTrashCan className="text-destructive" size={96} />
               ) : (
@@ -185,7 +196,9 @@ export function CraftingModal() {
                   flash === "trash"
                     ? "text-destructive"
                     : flash === "success"
-                      ? "text-primary"
+                      ? lastPotionId
+                        ? POTION_COLORS[lastPotionId].text
+                        : "text-primary"
                       : "text-foreground"
                 }`}
               >
