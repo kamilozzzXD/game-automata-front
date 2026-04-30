@@ -124,6 +124,29 @@ type GameStore = {
   setIsBossThinking: (b: boolean) => void
   // Reset completo de la IA del jefe (al entrar a la guarida).
   resetBoss: () => void
+
+  // ----- Modo Furia del Jefe (Tarea 3.2 - Fase 2) -----
+  //
+  // Flag global. Cuando es true, la logica de disparo del jefe en estado C
+  // (Atacar) cambia: cada vez que termina su cooldown lanza un dado al 50%
+  // y elige entre Ataque Basico o Ataque Pesado (proyectil grande, lento,
+  // que se fragmenta en 8 direcciones al expirar).
+  //
+  // ESTE FLAG ES EL "ENGANCHE" PARA LA TAREA 3.3 (HP y Maquinas de Turing).
+  // Cuando el sistema de vida del jefe (Tarea 3.3) detecte que se rompio
+  // la PRIMERA barra (Vida 1 == 0), debe llamar a:
+  //
+  //     useGameStore.getState().activarModoFuria()
+  //
+  // Eso es todo. El bucle del jefe en DungeonScene ya esta suscrito a
+  // este flag y empezara a usar Ataques Pesados aleatorios automaticamente.
+  isBossFurious: boolean
+  // Activa el Modo Furia (idempotente: llamar dos veces no rompe nada).
+  // Usar desde la Tarea 3.3 al perder la primera barra de vida del jefe.
+  activarModoFuria: () => void
+  // Apaga el modo (lo usamos al resetear el jefe / cambiar de mazmorra
+  // y en el boton de debug).
+  desactivarModoFuria: () => void
 }
 
 let notificationCounter = 0
@@ -230,5 +253,17 @@ export const useGameStore = create<GameStore>((set) => ({
   isBossThinking: false,
   setIsBossThinking: (b) => set({ isBossThinking: b }),
   resetBoss: () =>
-    set({ bossState: "A", bossAction: "Patrullar", isBossThinking: false }),
+    set({
+      bossState: "A",
+      bossAction: "Patrullar",
+      isBossThinking: false,
+      // Al entrar a una sala del jefe nueva, asumimos Vida 1 intacta:
+      // por lo tanto el modo furia debe arrancar apagado.
+      isBossFurious: false,
+    }),
+
+  // Modo Furia (Tarea 3.2 - handoff a Tarea 3.3).
+  isBossFurious: false,
+  activarModoFuria: () => set({ isBossFurious: true }),
+  desactivarModoFuria: () => set({ isBossFurious: false }),
 }))

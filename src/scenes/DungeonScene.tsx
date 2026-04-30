@@ -189,6 +189,88 @@ type ProjectileState = {
   distanciaRecorrida: number
 }
 
+// ===========================================================================
+// Tarea 3.2 - Combate del Jefe (Moore AI Action) y Modo Furia
+// ===========================================================================
+//
+// La IA del jefe (Maquina de Moore) ya determina QUE debe hacer:
+//   A = Patrullar  -> deambular lento por la sala
+//   B = Buscar     -> quedarse quieto, "girando" la mirada
+//   C = Atacar     -> perseguir al jugador y disparar
+//
+// Aqui implementamos el COMO. Mantenemos los proyectiles del jefe en un
+// array SEPARADO del jugador (`bossProyectiles`) para que sus colisiones
+// solo evaluen contra el rect del jugador y no se hagan dano a si mismos.
+// ---------------------------------------------------------------------------
+
+// Velocidades del jefe (px/frame de rAF, ~60fps).
+const BOSS_PATROL_SPEED = 1   // Estado A: paseo lento.
+const BOSS_ATTACK_SPEED = 2   // Estado C: persecucion.
+// Distancia minima que el jefe respeta del jugador en estado C, asi su
+// sprite no se monta encima del del jugador (no es parte del spec, pero
+// evita que el AABB del jefe se "trabe" sobre el del jugador).
+const BOSS_MIN_DISTANCE_TO_PLAYER = 60
+// Margen contra los muros: dejamos un padding para que el jefe no quede
+// pegado al borde y, por ende, los proyectiles que dispara nazcan dentro
+// del mundo (no off-screen).
+const BOSS_WORLD_MARGIN = 24
+
+// Patrullaje (estado A): el jefe elige un punto aleatorio dentro de un
+// radio limitado y camina hacia el. Cuando llega, elige otro.
+const BOSS_PATROL_RADIUS = 150
+// Si el jefe esta a < esta distancia del objetivo, lo damos por alcanzado
+// y elegimos un nuevo punto. Tiene que ser >= BOSS_PATROL_SPEED, sino
+// nunca "llegaria" exactamente.
+const BOSS_PATROL_REACHED_EPSILON = 4
+
+// Cooldown entre disparos basicos del jefe (estado C).
+const BOSS_SHOOT_COOLDOWN_MS = 1500
+
+// Configuracion de los proyectiles del jefe.
+// "Basico": un poco mas grande que el del jugador, mas lento, color rojo.
+const BOSS_BASIC_PROJECTILE_SIZE: Size = { width: 18, height: 18 }
+const BOSS_BASIC_PROJECTILE_SPEED = 4
+const BOSS_BASIC_PROJECTILE_MAX_DISTANCE = 600
+
+// "Pesado" (Modo Furia): el doble de tamano, 20% mas lento que el basico,
+// y al expirar (timeout/distancia) se fragmenta en 8 proyectiles basicos
+// hacia las 8 direcciones cardinales/diagonales.
+const BOSS_HEAVY_PROJECTILE_SIZE: Size = {
+  width: BOSS_BASIC_PROJECTILE_SIZE.width * 2,
+  height: BOSS_BASIC_PROJECTILE_SIZE.height * 2,
+}
+const BOSS_HEAVY_PROJECTILE_SPEED = BOSS_BASIC_PROJECTILE_SPEED * 0.8
+// Distancia tras la cual el pesado "explota" y se fragmenta. Lo bajamos
+// respecto al basico porque el tamano grande ya es amenaza suficiente.
+const BOSS_HEAVY_PROJECTILE_MAX_DISTANCE = 320
+
+// Las 8 direcciones de la fragmentacion del proyectil pesado. 0.707 es
+// la normalizacion 1/sqrt(2) para mantener |v| = 1 en las diagonales y
+// que la velocidad sea constante en todas las direcciones.
+const ESQUIRLAS_8_DIR: ReadonlyArray<{ dx: number; dy: number }> = [
+  { dx: 0, dy: -1 },          // N
+  { dx: 0, dy: 1 },           // S
+  { dx: 1, dy: 0 },           // E
+  { dx: -1, dy: 0 },          // O
+  { dx: 0.707, dy: -0.707 },  // NE
+  { dx: -0.707, dy: -0.707 }, // NO
+  { dx: 0.707, dy: 0.707 },   // SE
+  { dx: -0.707, dy: 0.707 },  // SO
+]
+
+type BossProjectileKind = "basic" | "heavy"
+
+type BossProjectileState = {
+  id: number
+  // Posicion del CENTRO (misma convencion que ProjectileState del jugador).
+  x: number
+  y: number
+  dx: number
+  dy: number
+  distanciaRecorrida: number
+  kind: BossProjectileKind
+}
+
 // Configuracion espacial de cada sala visitada. Se cachea por id para que las
 // puertas NO salten de pared al volver a una sala ya explorada.
 type RoomConfig = {
@@ -425,13 +507,26 @@ export function DungeonScene() {
   // Sala del jefe = nodo "jefe" sin hijos (el ultimo de la rama).
   const bossPresent = !!isBossRoom && !!hasNoChildren
 
-  // Sprint Polish-Pass - Tarea 4: posicion del jefe segun la pared
-  // por la que entro el jugador. Se recalcula cuando cambia la sala
-  // o la direccion de la puerta de regreso.
-  const bossPosition = useMemo(
+  // Sprint Polish-Pass - Tarea 4: posicion INICIAL del jefe segun la
+  // pared por la que entro el jugador. Se calcula al entrar a la sala.
+  // Tarea 3.2: ahora la posicion del jefe es DINAMICA (se mueve segun
+  // su Maquina de Moore), por lo que la guardamos como `useState` y la
+  // espejeamos en un ref para que el polling de la IA y el game loop
+  // de los proyectiles puedan leerla a 60fps sin recrear effects.
+  const initialBossPosition = useMemo(
     () => getBossPosition(currentConfig?.backDir ?? null),
     [currentConfig?.backDir],
   )
+  const [bossPosition, setBossPosition] = useState<Vector2D>(initialBossPosition)
+  const bossPositionRef = useRef<Vector2D>(initialBossPosition)
+  bossPositionRef.current = bossPosition
+
+  // Cuando cambia la sala (o la pared de entrada), reseteamos la posicion
+  // del jefe a su spawn. NO escribimos cada frame: solo en transiciones.
+  useEffect(() => {
+    setBossPosition(initialBossPosition)
+    bossPositionRef.current = initialBossPosition
+  }, [initialBossPosition])
 
   // -------------------------------------------------------------------------
   // Sprint 4 - Llamada a /api/boss-action y aplicacion de la transicion.
@@ -502,11 +597,12 @@ export function DungeonScene() {
       const snap = useGameStore.getState()
       if (snap.isPlayerInvisible) return
 
-      // Tomamos la posicion fresca del jugador en cada tick para
-      // que el ritmo del polling no dependa del re-render de React.
+      // Tomamos la posicion fresca del jugador y del jefe en cada tick.
+      // Tarea 3.2: el jefe se mueve a 60fps; leemos su posicion via ref
+      // para que el setInterval del polling no se reconstruya cada frame.
       const dist = distance(
         center(snap.playerPosition, PLAYER_SIZE),
-        center(bossPosition, BOSS_SIZE),
+        center(bossPositionRef.current, BOSS_SIZE),
       )
 
       let stim: BossStimulus | null = null
@@ -531,10 +627,10 @@ export function DungeonScene() {
       mounted = false
       window.clearInterval(interval)
     }
-    // playerPosition NO va aqui: lo leemos via getState() en cada tick
-    // para evitar re-crear el interval en cada frame. bossPosition si
-    // entra como dep porque cambia con la entrada del jugador a la sala.
-  }, [bossPresent, sendBossStimulus, bossPosition])
+    // playerPosition y bossPosition NO van aqui: los leemos via getState()
+    // y bossPositionRef en cada tick para evitar re-crear el interval cada
+    // vez que el jefe se mueve (a 60fps).
+  }, [bossPresent, sendBossStimulus])
 
   // -------------------------------------------------------------------------
   // Sprint 4 - Handler de "usar pocion seleccionada" (tecla Q).
@@ -657,10 +753,10 @@ export function DungeonScene() {
         return
       }
 
-      // Rect del jefe para la colision AABB. Usamos la esquina sup-izq
-      // de bossPosition + BOSS_SIZE; el AABB del proyectil se construye
-      // a partir de su CENTRO (x, y) - PROJECTILE_SIZE/2.
-      const bossPos = bossPosition
+      // Rect del jefe para la colision AABB. Tarea 3.2: el jefe se mueve,
+      // asi que tomamos su posicion fresca via ref en cada frame en vez
+      // de capturarla por closure (sino "fallariamos" a un fantasma).
+      const bossPos = bossPositionRef.current
       const bossSize = BOSS_SIZE
 
       const next: ProjectileState[] = []
@@ -710,7 +806,317 @@ export function DungeonScene() {
 
     rafId = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(rafId)
-  }, [bossPresent, bossPosition])
+  }, [bossPresent])
+
+  // ===========================================================================
+  // Tarea 3.2 - Game loop del Jefe.
+  //
+  // Un unico requestAnimationFrame que se encarga de TODO lo del jefe:
+  //
+  //   1. Movimiento segun bossState (Maquina de Moore)
+  //        A -> patrullaje a velocidad 1 entre puntos aleatorios cercanos.
+  //        B -> quieto (en C esta "buscando", no se mueve).
+  //        C -> persecucion al jugador a velocidad 2.
+  //
+  //   2. Ataque (solo en estado C).
+  //        - Cooldown BOSS_SHOOT_COOLDOWN_MS entre disparos.
+  //        - Si NO esta en Modo Furia -> Ataque Basico apuntando al
+  //          jugador (vector normalizado jefe -> jugador en el momento
+  //          del disparo).
+  //        - Si SI esta en Modo Furia -> 50% Basico, 50% Pesado.
+  //
+  //   3. Movimiento de los proyectiles del jefe + colision con el jugador.
+  //        - Los proyectiles tienen distancia maxima:
+  //            * Basico  -> BOSS_BASIC_PROJECTILE_MAX_DISTANCE
+  //            * Pesado  -> BOSS_HEAVY_PROJECTILE_MAX_DISTANCE
+  //        - Si un proyectil PESADO expira (por distancia o por salir del
+  //          mundo) sin haber tocado al jugador, se FRAGMENTA en 8
+  //          esquirlas basicas hacia las direcciones de ESQUIRLAS_8_DIR.
+  //        - Si un proyectil toca al jugador (AABB con PLAYER_SIZE):
+  //          console.log de impacto y se elimina. La logica de HP del
+  //          jugador queda para una tarea posterior (3.3).
+  // ---------------------------------------------------------------------------
+  const [bossProyectiles, setBossProyectiles] = useState<BossProjectileState[]>([])
+  const bossProyectilesRef = useRef<BossProjectileState[]>([])
+  bossProyectilesRef.current = bossProyectiles
+  // Id incremental para evitar choques entre proyectiles instanciados en el
+  // mismo frame (las 8 esquirlas de la fragmentacion lo necesitan).
+  const bossProjectileIdRef = useRef<number>(0)
+  // Punto objetivo del patrullaje (estado A). null = aun no elegimos uno.
+  const patrolTargetRef = useRef<Vector2D | null>(null)
+  // Marca temporal del ultimo disparo del jefe (estado C). Usamos
+  // performance.now() en ms.
+  const lastBossShotAtRef = useRef<number>(0)
+
+  useEffect(() => {
+    if (!bossPresent) {
+      // Salimos de la sala del jefe: limpiamos los proyectiles vivos
+      // (mismo razonamiento que para los del jugador en el effect anterior).
+      if (bossProyectilesRef.current.length > 0) setBossProyectiles([])
+      patrolTargetRef.current = null
+      lastBossShotAtRef.current = 0
+      return
+    }
+
+    let rafId = 0
+    const tick = () => {
+      const snap = useGameStore.getState()
+      const cur = bossPositionRef.current
+
+      // -------- 1) Movimiento del jefe segun el estado de Moore --------
+      let nextBossPos: Vector2D = cur
+
+      if (snap.bossState === "A") {
+        // Patrullaje. Si no tenemos objetivo o estamos cerca de el,
+        // elegimos un nuevo punto aleatorio dentro de un radio
+        // BOSS_PATROL_RADIUS, clampeado a los bordes del mundo.
+        const reached =
+          !patrolTargetRef.current ||
+          distance(cur, patrolTargetRef.current) <= BOSS_PATROL_REACHED_EPSILON
+        if (reached) {
+          const angle = Math.random() * Math.PI * 2
+          const radius = Math.random() * BOSS_PATROL_RADIUS
+          patrolTargetRef.current = {
+            x: clampX(cur.x + Math.cos(angle) * radius),
+            y: clampY(cur.y + Math.sin(angle) * radius),
+          }
+        }
+        nextBossPos = stepTowards(
+          cur,
+          patrolTargetRef.current!,
+          BOSS_PATROL_SPEED,
+        )
+      } else if (snap.bossState === "B") {
+        // Buscar: el jefe se queda quieto. El feedback visual de que
+        // "esta buscando" lo da el StateBadge del componente Boss
+        // (icono "!" amarillo + animate-pulse).
+        patrolTargetRef.current = null
+      } else {
+        // C - Atacar. Persigue al jugador hasta una distancia minima
+        // para no encimarse encima de el.
+        patrolTargetRef.current = null
+        const playerCenter = center(snap.playerPosition, PLAYER_SIZE)
+        const bossCenter = center(cur, BOSS_SIZE)
+        const distToPlayer = distance(bossCenter, playerCenter)
+        if (distToPlayer > BOSS_MIN_DISTANCE_TO_PLAYER) {
+          // Convertimos el target del centro a la esquina sup-izq.
+          const target: Vector2D = {
+            x: playerCenter.x - BOSS_SIZE.width / 2,
+            y: playerCenter.y - BOSS_SIZE.height / 2,
+          }
+          nextBossPos = stepTowards(cur, target, BOSS_ATTACK_SPEED)
+        }
+      }
+
+      // Clamp final a los bordes del mundo (defensivo).
+      nextBossPos = {
+        x: clampX(nextBossPos.x),
+        y: clampY(nextBossPos.y),
+      }
+
+      if (nextBossPos.x !== cur.x || nextBossPos.y !== cur.y) {
+        bossPositionRef.current = nextBossPos
+        setBossPosition(nextBossPos)
+      }
+
+      // -------- 2) Ataque del jefe (solo en estado C) --------
+      // Construimos el nuevo proyectil PERO no lo metemos al state aun:
+      // lo pasamos a stepBossProjectiles para hacer un solo setState
+      // por frame (sino la segunda escritura "pisa" la primera).
+      const now = performance.now()
+      let pendingSpawn: BossProjectileState | null = null
+      if (
+        snap.bossState === "C" &&
+        now - lastBossShotAtRef.current >= BOSS_SHOOT_COOLDOWN_MS
+      ) {
+        lastBossShotAtRef.current = now
+        pendingSpawn = buildBossShotAtPlayer(snap.isBossFurious)
+      }
+
+      // -------- 3) Movimiento de los proyectiles del jefe + colisiones --------
+      stepBossProjectiles(snap.playerPosition, pendingSpawn)
+
+      rafId = requestAnimationFrame(tick)
+    }
+
+    // Helper: clampea un valor X al area jugable del mundo (con margen).
+    function clampX(x: number): number {
+      return Math.max(
+        BOSS_WORLD_MARGIN,
+        Math.min(WORLD_SIZE.width - BOSS_SIZE.width - BOSS_WORLD_MARGIN, x),
+      )
+    }
+    function clampY(y: number): number {
+      return Math.max(
+        BOSS_WORLD_MARGIN,
+        Math.min(WORLD_SIZE.height - BOSS_SIZE.height - BOSS_WORLD_MARGIN, y),
+      )
+    }
+
+    // Helper: avanza `from` hacia `to` un maximo de `speed` pixeles.
+    function stepTowards(
+      from: Vector2D,
+      to: Vector2D,
+      speed: number,
+    ): Vector2D {
+      const dx = to.x - from.x
+      const dy = to.y - from.y
+      const len = Math.sqrt(dx * dx + dy * dy)
+      if (len <= speed) return to
+      return {
+        x: from.x + (dx / len) * speed,
+        y: from.y + (dy / len) * speed,
+      }
+    }
+
+    // Helper: construye un proyectil del jefe apuntando al jugador.
+    // Si esta en Modo Furia, sortea 50/50 basico vs pesado.
+    // No toca el state: solo devuelve el objeto (lo mete stepBossProjectiles).
+    function buildBossShotAtPlayer(
+      furious: boolean,
+    ): BossProjectileState | null {
+      const playerC = center(
+        useGameStore.getState().playerPosition,
+        PLAYER_SIZE,
+      )
+      const bossC = center(bossPositionRef.current, BOSS_SIZE)
+      const vx = playerC.x - bossC.x
+      const vy = playerC.y - bossC.y
+      const len = Math.sqrt(vx * vx + vy * vy)
+      // Defensa: si por casualidad coinciden centros (no deberia, hay
+      // BOSS_MIN_DISTANCE_TO_PLAYER), no disparamos.
+      if (len === 0) return null
+
+      // Modo Furia: 50% Basico, 50% Pesado. Math.random() <= 0.5 da el
+      // mismo resultado que > 0.5 invertido (la spec dice "> 0.5: basico,
+      // <= 0.5: pesado").
+      const useHeavy = furious && Math.random() <= 0.5
+      bossProjectileIdRef.current += 1
+      return {
+        id: bossProjectileIdRef.current,
+        x: bossC.x,
+        y: bossC.y,
+        dx: vx / len,
+        dy: vy / len,
+        distanciaRecorrida: 0,
+        kind: useHeavy ? "heavy" : "basic",
+      }
+    }
+
+    // Helper: avanza todos los proyectiles del jefe, los descarta si
+    // expiran (con fragmentacion para los pesados) y revisa AABB contra
+    // el jugador. Tambien adjunta `pendingSpawn` (proyectil recien creado
+    // este frame) si lo hay. Solo escribe al state si hubo cambios.
+    function stepBossProjectiles(
+      playerPos: Vector2D,
+      pendingSpawn: BossProjectileState | null,
+    ) {
+      const current = bossProyectilesRef.current
+      if (current.length === 0 && !pendingSpawn) return
+
+      // Esquirlas que generara la fragmentacion de los pesados expirados
+      // este frame. Se acumulan y se concatenan al final.
+      const esquirlasGeneradas: BossProjectileState[] = []
+      const next: BossProjectileState[] = []
+
+      for (const p of current) {
+        const speed =
+          p.kind === "heavy"
+            ? BOSS_HEAVY_PROJECTILE_SPEED
+            : BOSS_BASIC_PROJECTILE_SPEED
+        const maxDist =
+          p.kind === "heavy"
+            ? BOSS_HEAVY_PROJECTILE_MAX_DISTANCE
+            : BOSS_BASIC_PROJECTILE_MAX_DISTANCE
+        const projSize =
+          p.kind === "heavy"
+            ? BOSS_HEAVY_PROJECTILE_SIZE
+            : BOSS_BASIC_PROJECTILE_SIZE
+
+        const nx = p.x + p.dx * speed
+        const ny = p.y + p.dy * speed
+        const nDist = p.distanciaRecorrida + speed
+
+        // Salida del mundo. Para los basicos -> simplemente desaparece.
+        // Para los pesados -> tambien desaparece SIN fragmentar (porque
+        // las esquirlas saldrian fuera de pantalla y serian invisibles).
+        const fueraDelMundo =
+          nx < -projSize.width ||
+          nx > WORLD_SIZE.width + projSize.width ||
+          ny < -projSize.height ||
+          ny > WORLD_SIZE.height + projSize.height
+        if (fueraDelMundo) continue
+
+        // Expiracion por distancia recorrida.
+        if (nDist > maxDist) {
+          if (p.kind === "heavy") {
+            // FRAGMENTACION: en las coordenadas exactas del proyectil
+            // pesado expirado, instanciamos 8 proyectiles basicos.
+            for (const dir of ESQUIRLAS_8_DIR) {
+              bossProjectileIdRef.current += 1
+              esquirlasGeneradas.push({
+                id: bossProjectileIdRef.current,
+                x: nx,
+                y: ny,
+                dx: dir.dx,
+                dy: dir.dy,
+                distanciaRecorrida: 0,
+                kind: "basic",
+              })
+            }
+          }
+          continue
+        }
+
+        // Hit: AABB del proyectil vs AABB del jugador.
+        const projPos: Vector2D = {
+          x: nx - projSize.width / 2,
+          y: ny - projSize.height / 2,
+        }
+        if (intersectsAABB(projPos, projSize, playerPos, PLAYER_SIZE)) {
+          // Tarea 3.2 - Spec: con un console.log basta. La barra de HP
+          // del jugador la conectara la Tarea 3.3.
+          console.log(
+            `[v0] ¡Impacto al Jugador! (proyectil ${p.kind} del jefe)`,
+          )
+          continue
+        }
+
+        next.push({ ...p, x: nx, y: ny, distanciaRecorrida: nDist })
+      }
+
+      // Concatenamos: proyectiles que sobreviven + esquirlas generadas
+      // por pesados expirados + el spawn de este frame (si hubo disparo).
+      const result: BossProjectileState[] = next
+      if (esquirlasGeneradas.length > 0) result.push(...esquirlasGeneradas)
+      if (pendingSpawn) result.push(pendingSpawn)
+
+      // Solo actualizamos si cambio algo (longitud o referencia de los
+      // elementos). Evita re-renders en frames donde nada se movio
+      // (por ejemplo, cuando el array esta vacio).
+      if (
+        result.length !== current.length ||
+        result.some((p, i) => p !== current[i])
+      ) {
+        setBossProyectiles(result)
+      }
+    }
+
+    rafId = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(rafId)
+    // bossPresent reinicia todo el sistema. NO ponemos bossState aqui:
+    // lo leemos via getState() en cada frame para no recrear el rAF.
+  }, [bossPresent])
+
+  // ---------------------------------------------------------------------------
+  // Debug toggle del Modo Furia.
+  // Tarea 3.2 expone esta funcion para que el dev de Tarea 3.3 (HP) la
+  // pueda invocar al perder la primera barra de vida del jefe. Se llama
+  // tambien desde el boton "Activar Furia" del panel de la sala del jefe.
+  // ---------------------------------------------------------------------------
+  const isBossFurious = useGameStore((s) => s.isBossFurious)
+  const activarModoFuria = useGameStore((s) => s.activarModoFuria)
+  const desactivarModoFuria = useGameStore((s) => s.desactivarModoFuria)
 
   return (
     <main className="flex min-h-screen w-full items-center justify-center bg-background p-4">
@@ -756,6 +1162,23 @@ export function DungeonScene() {
           <Boss position={bossPosition} size={BOSS_SIZE} state={bossState} />
         )}
 
+        {/* Proyectiles del JEFE (Tarea 3.2).
+            Van debajo de los del jugador para que en una colision visual
+            el del jugador "tape" al del jefe. */}
+        {bossProyectiles.map((p) => (
+          <Projectile
+            key={`boss-${p.id}`}
+            x={p.x}
+            y={p.y}
+            size={
+              p.kind === "heavy"
+                ? BOSS_HEAVY_PROJECTILE_SIZE.width
+                : BOSS_BASIC_PROJECTILE_SIZE.width
+            }
+            variant={p.kind === "heavy" ? "boss-heavy" : "boss-basic"}
+          />
+        ))}
+
         {/* Proyectiles del jugador (Tarea 3.1).
             Se renderizan SIEMPRE que haya entradas vivas en el array.
             La logica del game loop ya se asegura de vaciar el array al
@@ -766,6 +1189,7 @@ export function DungeonScene() {
             x={p.x}
             y={p.y}
             size={PROJECTILE_SIZE.width}
+            variant="player"
           />
         ))}
 
@@ -797,15 +1221,27 @@ export function DungeonScene() {
 
         {/* Panel discreto en la sala del jefe (Sprint 4):
             - Muestra el estado/accion actual del automata.
-            - Botones de regenerar y salir, sin tapar al jefe (lateral inf.) */}
+            - Botones de regenerar y salir, sin tapar al jefe (lateral inf.)
+            - Tarea 3.2: badge de Modo Furia + boton debug para activarlo. */}
         {bossPresent && (
           <div className="pointer-events-none absolute bottom-12 left-1/2 z-30 flex -translate-x-1/2 flex-col items-center gap-2">
-            <div className="rounded-md border border-red-500/40 bg-background/85 px-3 py-1.5 text-center shadow backdrop-blur">
+            <div
+              className={`rounded-md border px-3 py-1.5 text-center shadow backdrop-blur ${
+                isBossFurious
+                  ? "border-purple-500/70 bg-background/90"
+                  : "border-red-500/40 bg-background/85"
+              }`}
+            >
               <p className="flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-wider text-red-300">
                 <GiSkullCrossedBones size={14} />
                 IA del Jefe: estado {bossState}
                 {isBossThinking && (
                   <GiVortex size={12} className="animate-spin text-amber-300" />
+                )}
+                {isBossFurious && (
+                  <span className="ml-1 rounded bg-purple-700 px-1.5 py-0 text-[10px] font-extrabold text-purple-100 animate-pulse">
+                    FURIA
+                  </span>
                 )}
               </p>
               <p className="text-[10px] text-muted-foreground">
@@ -813,7 +1249,9 @@ export function DungeonScene() {
                   ? "Patrulla relajada"
                   : bossState === "B"
                     ? "En busqueda - alerta"
-                    : "Atacando - ¡huye o usa Invisibilidad!"}
+                    : isBossFurious
+                      ? "Atacando con FURIA - cuidado con los proyectiles morados"
+                      : "Atacando - ¡huye o usa Invisibilidad!"}
               </p>
             </div>
             <div className="pointer-events-auto flex gap-2">
@@ -828,6 +1266,26 @@ export function DungeonScene() {
                   className={isGenerating ? "animate-spin" : undefined}
                 />
                 Otra Mazmorra
+              </button>
+              {/* Tarea 3.2 - Boton DEBUG: activa/desactiva el Modo Furia
+                  manualmente porque la Tarea 3.3 (HP del jefe) aun no
+                  esta implementada. Cuando exista el HP, se llamara a
+                  `useGameStore.getState().activarModoFuria()` desde el
+                  evento "Vida 1 == 0" en lugar de este boton. */}
+              <button
+                type="button"
+                onClick={() =>
+                  isBossFurious ? desactivarModoFuria() : activarModoFuria()
+                }
+                className={`flex items-center gap-1 rounded px-2 py-1 text-[10px] font-semibold hover:opacity-90 ${
+                  isBossFurious
+                    ? "bg-purple-700 text-purple-100"
+                    : "bg-red-700 text-red-100"
+                }`}
+                aria-pressed={isBossFurious}
+                title="Debug: simula que el jefe perdio la primera barra de vida"
+              >
+                {isBossFurious ? "Desactivar Furia" : "Activar Furia (debug)"}
               </button>
             </div>
           </div>
