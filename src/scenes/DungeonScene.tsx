@@ -182,6 +182,9 @@ const PROJECTILE_MAX_DISTANCE = 400
 const SHOOT_COOLDOWN_MS = 180
 // Tarea 3.3: daño que inflige el proyectil del jugador al jefe.
 const PLAYER_PROJECTILE_DAMAGE = 10
+// Fase 4 (3.2): distancia máxima para detectar "near miss" (proyectil que
+// pasa cerca del jefe sin impactar). Esto dispara el estímulo "h".
+const BOSS_NEAR_MISS_THRESHOLD = 40
 
 type ProjectileState = {
   id: number
@@ -194,6 +197,9 @@ type ProjectileState = {
   dy: number
   // Acumulado para sacar el proyectil cuando se pasa de PROJECTILE_MAX_DISTANCE.
   distanciaRecorrida: number
+  // Fase 4 (3.2): flag para evitar enviar el estímulo "h" múltiples veces
+  // cuando el proyectil pasa cerca del jefe (near miss).
+  triggeredNearMiss?: boolean
 }
 
 // ===========================================================================
@@ -817,6 +823,22 @@ export function DungeonScene() {
           y: ny - PROJECTILE_SIZE.height / 2,
         }
         if (intersectsAABB(projPos, PROJECTILE_SIZE, bossPos, bossSize)) {
+          // Fase 4 (3.2): Enviar estímulo "h" (hostilidad) para despertar al jefe.
+          // Esto garantiza que el jefe reaccione al primer impacto incluso si
+          // estaba fuera de rango de visión/ruido.
+          const curState = useGameStore.getState().bossState
+          if (curState !== "C") {
+            void bossAction({ estado_actual: curState, estimulo: "h" }).then((res) => {
+              const newState = parseBossState(res.nuevo_estado)
+              if (newState) {
+                useGameStore.getState().setBossState(newState)
+                useGameStore.getState().setBossAction(res.accion)
+              }
+            }).catch((err) => {
+              console.error("[v0] Error en bossAction (hostilidad):", err)
+            })
+          }
+
           // Tarea 3.3: llamar a la API de combate (Máquina de Turing)
           // para calcular el daño y actualizar la vida del jefe.
           const currentBossHp = useGameStore.getState().bossHp
@@ -835,7 +857,38 @@ export function DungeonScene() {
           continue
         }
 
-        next.push({ ...p, x: nx, y: ny, distanciaRecorrida: nDist })
+        // Fase 4 (3.2): Near miss - proyectil que pasa muy cerca del jefe.
+        // Calculamos la distancia del centro del proyectil al centro del jefe.
+        // Solo disparamos el estímulo una vez por proyectil (flag triggeredNearMiss).
+        let didTriggerNearMiss = p.triggeredNearMiss ?? false
+        
+        if (!didTriggerNearMiss) {
+          const bossCenter = center(bossPos, bossSize)
+          const projCenter: Vector2D = { x: nx, y: ny }
+          const distToBoss = distance(projCenter, bossCenter)
+          // El umbral es el radio del jefe (mitad de la diagonal aprox) + margen.
+          const bossRadius = Math.max(bossSize.width, bossSize.height) / 2
+          const nearMissThreshold = bossRadius + BOSS_NEAR_MISS_THRESHOLD
+          
+          if (distToBoss < nearMissThreshold) {
+            didTriggerNearMiss = true
+            // El proyectil pasó muy cerca: despertar al jefe si no está en C.
+            const curState = useGameStore.getState().bossState
+            if (curState !== "C") {
+              void bossAction({ estado_actual: curState, estimulo: "h" }).then((res) => {
+                const newState = parseBossState(res.nuevo_estado)
+                if (newState) {
+                  useGameStore.getState().setBossState(newState)
+                  useGameStore.getState().setBossAction(res.accion)
+                }
+              }).catch((err) => {
+                console.error("[v0] Error en bossAction (near miss):", err)
+              })
+            }
+          }
+        }
+
+        next.push({ ...p, x: nx, y: ny, distanciaRecorrida: nDist, triggeredNearMiss: didTriggerNearMiss })
       }
 
       // Solo actualizamos el state si hubo cambio real (movimiento o muerte
