@@ -6,7 +6,6 @@ import { Portal } from "../components/game/Portal"
 import { CraftingModal } from "../components/ui/CraftingModal"
 import { HUD } from "../components/ui/HUD"
 import { Notifications } from "../components/ui/Notifications"
-import { PotionHotbar } from "../components/ui/PotionHotbar"
 import { useGameStore } from "../core/gameStore"
 import { POTION_NAMES } from "../core/dictionary"
 import { isWithinRadius } from "../core/geometry"
@@ -242,11 +241,9 @@ export function ForestScene() {
         {/* Jugador */}
         <Player position={playerPosition} size={PLAYER_SIZE} />
 
-        {/* HUD superpuesto */}
+        {/* HUD superpuesto (incluye el inventario y la PotionHotbar
+            apilados en la columna izquierda - Sprint Polish-Pass T1). */}
         <HUD />
-
-        {/* Barra rapida de pociones (Sprint 4) */}
-        <PotionHotbar />
 
         {/* Aviso si la ventana no tiene foco */}
         {!hasFocus && (
