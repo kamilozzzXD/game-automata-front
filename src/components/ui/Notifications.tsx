@@ -16,11 +16,13 @@ export function Notifications() {
   }, [notifications, remove])
 
   return (
-    // z-[60] para flotar SIEMPRE por encima del modal de crafteo (z-50)
-    // y de cualquier overlay de la escena. Asi las notificaciones de
-    // "Ingrediente anadido" / "Mezcla fallida" son legibles incluso con
-    // el caldero abierto.
-    <div className="pointer-events-none fixed bottom-6 left-1/2 z-[60] flex -translate-x-1/2 flex-col items-center gap-2">
+    // z-[100] para flotar SIEMPRE por encima del modal de crafteo (z-50),
+    // del backdrop blur del modal, del loader (z-40) y de cualquier
+    // overlay de la escena. Bug Visual Sprint 1/2: las notificaciones
+    // ("Ingrediente anadido" / "Mezcla fallida") se cargaban debajo
+    // del modal por la combinacion de stacking context + backdrop-blur.
+    // Subir a z-[100] garantiza que el contenedor no queda atrapado.
+    <div className="pointer-events-none fixed bottom-6 left-1/2 z-[100] flex -translate-x-1/2 flex-col items-center gap-2">
       {notifications.map((n) => (
         <div
           key={n.id}
