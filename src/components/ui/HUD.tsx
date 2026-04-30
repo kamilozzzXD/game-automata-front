@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { GiPotionBall, GiTrashCan } from "react-icons/gi"
 import { useGameStore } from "../../core/gameStore"
-import { POTION_NAMES } from "../../core/dictionary"
+import { POTION_COLORS, POTION_NAMES } from "../../core/dictionary"
 import type { PotionId } from "../../types/game"
+import { PotionHotbar } from "./PotionHotbar"
 
 const POTION_ORDER: PotionId[] = [
   "P1",
@@ -19,6 +20,17 @@ const POTION_ORDER: PotionId[] = [
 
 /**
  * Heads-Up Display: muestra inventario y controles superpuestos sobre la escena.
+ *
+ * Sprint Polish-Pass:
+ *   - Tarea 1: el HUD ahora monta a la PotionHotbar dentro de la misma
+ *     columna izquierda, justo debajo del bloque "X pociones / basura Y".
+ *     Asi toda la informacion secuencial de pociones queda agrupada.
+ *   - Tarea 2: cada pocion del inventario abierto se renderiza con su
+ *     color caracteristico (POTION_COLORS) para identificarlas de un
+ *     vistazo, sin pasar el raton por encima.
+ *   - Tarea 3 (Accion 1): el bloque del inventario ya NO depende del
+ *     raton. Se abre/cierra con la tecla "I" (toggle). El boton sigue
+ *     siendo cliqueable como respaldo, pero no es la via principal.
  */
 export function HUD() {
   const inventory = useGameStore((s) => s.inventory)
@@ -32,14 +44,37 @@ export function HUD() {
 
   const ownedPotions = POTION_ORDER.filter((id) => (inventory[id] ?? 0) > 0)
 
+  // Tecla "I" para abrir/cerrar el inventario (Sprint Polish-Pass - Tarea 3.1).
+  // Ignoramos la tecla cuando el usuario esta tipeando en un input/textarea
+  // (defensa contra futuros campos de texto).
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== "i") return
+      const target = e.target as HTMLElement | null
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return
+      }
+      e.preventDefault()
+      setOpen((v) => !v)
+    }
+    window.addEventListener("keydown", handler)
+    return () => window.removeEventListener("keydown", handler)
+  }, [])
+
   return (
     <>
-      {/* Inventario / contadores */}
+      {/* Bloque izquierdo: contadores + hotbar.
+          Posicion absoluta dentro del contenedor relativo de la escena. */}
       <div className="pointer-events-auto absolute left-4 top-4 z-30 flex flex-col gap-2">
         <button
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
-          aria-label="Abrir inventario"
+          aria-label="Abrir inventario (tecla I)"
           className="flex items-center gap-2 rounded-lg border border-border/60 bg-background/70 px-3 py-2 text-sm font-semibold text-foreground backdrop-blur transition-colors hover:border-primary/60 hover:bg-background/90"
         >
           <GiPotionBall className="text-primary" size={20} />
@@ -52,12 +87,18 @@ export function HUD() {
               <span className="font-mono text-destructive">{trash}</span>
             </>
           )}
+          <kbd className="ml-1 rounded bg-muted px-1 text-[10px] font-mono text-foreground">
+            I
+          </kbd>
         </button>
 
         {open && (
           <div className="w-64 rounded-lg border border-border/60 bg-background/90 p-3 text-sm shadow-xl backdrop-blur">
-            <p className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">
-              Inventario
+            <p className="mb-2 flex items-center justify-between text-xs uppercase tracking-wider text-muted-foreground">
+              <span>Inventario</span>
+              <kbd className="rounded bg-muted px-1 text-[10px] text-foreground">
+                I
+              </kbd>
             </p>
             {ownedPotions.length === 0 ? (
               <p className="text-xs text-muted-foreground">
@@ -65,20 +106,25 @@ export function HUD() {
               </p>
             ) : (
               <ul className="flex flex-col gap-1">
-                {ownedPotions.map((id) => (
-                  <li
-                    key={id}
-                    className="flex items-center justify-between gap-2 rounded px-1 py-0.5 text-foreground"
-                  >
-                    <span className="flex items-center gap-2">
-                      <GiPotionBall className="text-primary" size={16} />
-                      <span className="text-xs">{POTION_NAMES[id]}</span>
-                    </span>
-                    <span className="font-mono text-xs text-muted-foreground">
-                      x{inventory[id]}
-                    </span>
-                  </li>
-                ))}
+                {ownedPotions.map((id) => {
+                  const color = POTION_COLORS[id]
+                  return (
+                    <li
+                      key={id}
+                      className="flex items-center justify-between gap-2 rounded px-1 py-0.5 text-foreground"
+                    >
+                      <span className="flex items-center gap-2">
+                        <GiPotionBall className={color.text} size={16} />
+                        <span className={`text-xs font-medium ${color.text}`}>
+                          {POTION_NAMES[id]}
+                        </span>
+                      </span>
+                      <span className="font-mono text-xs text-muted-foreground">
+                        x{inventory[id]}
+                      </span>
+                    </li>
+                  )
+                })}
               </ul>
             )}
             {trash > 0 && (
@@ -92,6 +138,10 @@ export function HUD() {
             )}
           </div>
         )}
+
+        {/* Barra rapida vertical (Sprint Polish-Pass - Tarea 1):
+            queda apilada justo debajo del bloque de info de pociones. */}
+        <PotionHotbar />
       </div>
 
       {/* Controles */}
@@ -101,6 +151,9 @@ export function HUD() {
         </p>
         <p>
           <kbd className="rounded bg-muted px-1 text-foreground">E</kbd> interactuar
+        </p>
+        <p>
+          <kbd className="rounded bg-muted px-1 text-foreground">I</kbd> inventario
         </p>
         <p>
           <kbd className="rounded bg-muted px-1 text-foreground">Tab</kbd>{" "}

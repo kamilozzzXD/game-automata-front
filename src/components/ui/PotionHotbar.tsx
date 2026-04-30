@@ -1,18 +1,28 @@
 import { GiPotionBall } from "react-icons/gi"
 import { HOTBAR_SLOTS, useGameStore } from "../../core/gameStore"
-import { POTION_NAMES } from "../../core/dictionary"
+import { POTION_COLORS, POTION_NAMES } from "../../core/dictionary"
 
 /**
- * Barra de acceso rapido vertical (Sprint 4 - Tarea 1).
+ * Barra de acceso rapido vertical (Sprint 4 - Tarea 1, ajustada en
+ * Sprint Polish-Pass - Tarea 1).
  *
- * Estilo Minecraft/Terraria pero rotada: 10 casillas apiladas en el
- * lateral derecho, una por tipo de pocion (P1..P10). El slot
- * seleccionado se resalta con borde marcado y leve escala.
+ * Reubicacion: ahora se renderiza dentro del HUD (columna izquierda),
+ * justo debajo del bloque "X pociones / basura Y". Por eso ya no usa
+ * `absolute`: se apila naturalmente con el resto del HUD via flex.
+ *
+ * Sprint Polish-Pass - Tarea 2: cada slot toma el color del POTION_COLORS
+ * para que el jugador identifique pociones de un solo vistazo (sin
+ * pasar el raton por encima).
+ *
+ * Sprint Polish-Pass - Tarea 3: ya no es indispensable usar el raton.
+ * Mostramos el nombre de la pocion actualmente seleccionada en un
+ * cuadro de texto debajo de la barra para feedback al cyclar con Tab.
  *
  * Controles (sin raton):
  *   - Tab / FlechaAbajo  -> baja la seleccion (cicla)
  *   - ShiftTab / FlechaArriba -> sube la seleccion (cicla)
  *   - Q                  -> consume la pocion seleccionada
+ *   - 1..9 / 0           -> seleccion directa (vivo en useHotbarControls)
  *
  * NO renderiza handlers de teclado: la lectura de teclas vive en el
  * hook useHotbarControls que la escena monta una sola vez.
@@ -23,9 +33,13 @@ export function PotionHotbar() {
   const setSelectedIndex = useGameStore((s) => s.setSelectedHotbarIndex)
   const isInvisible = useGameStore((s) => s.isPlayerInvisible)
 
+  const selectedPotionId = HOTBAR_SLOTS[selectedIndex]
+  const selectedColor = POTION_COLORS[selectedPotionId]
+  const selectedCount = inventory[selectedPotionId] ?? 0
+
   return (
     <aside
-      className="pointer-events-auto absolute right-3 top-1/2 z-30 -translate-y-1/2 select-none"
+      className="pointer-events-auto select-none"
       aria-label="Barra rapida de pociones"
     >
       <div className="flex flex-col items-stretch gap-1.5 rounded-xl border border-border/60 bg-background/75 p-2 shadow-2xl backdrop-blur">
@@ -37,6 +51,7 @@ export function PotionHotbar() {
           const count = inventory[potionId] ?? 0
           const isSelected = i === selectedIndex
           const isEmpty = count <= 0
+          const color = POTION_COLORS[potionId]
 
           return (
             <button
@@ -47,23 +62,27 @@ export function PotionHotbar() {
               aria-pressed={isSelected}
               className={`group relative flex h-12 w-12 items-center justify-center rounded-md border transition-all ${
                 isSelected
-                  ? "scale-105 border-accent bg-accent/15 ring-2 ring-accent shadow-[0_0_12px_rgba(56,189,248,0.4)]"
+                  ? "scale-105 bg-background/80"
                   : "border-border/50 bg-background/50 hover:border-border"
               } ${isEmpty ? "opacity-40" : "opacity-100"}`}
+              style={
+                isSelected
+                  ? {
+                      borderColor: color.glow.replace("0.55", "0.9"),
+                      boxShadow: `0 0 14px ${color.glow}`,
+                    }
+                  : undefined
+              }
             >
               {/* Numero del slot (esquina sup-izq) */}
               <span className="absolute left-1 top-0.5 text-[9px] font-bold text-muted-foreground">
                 {i + 1}
               </span>
 
-              {/* Icono de la pocion (color depende de si esta vacia o no) */}
+              {/* Icono de la pocion (color depende del tipo y de si esta vacia) */}
               <GiPotionBall
                 className={`${
-                  isEmpty
-                    ? "text-muted-foreground/60"
-                    : isSelected
-                      ? "text-accent"
-                      : "text-primary"
+                  isEmpty ? "text-muted-foreground/60" : color.text
                 }`}
                 size={26}
               />
@@ -74,20 +93,36 @@ export function PotionHotbar() {
                   x{count}
                 </span>
               )}
-
-              {/* Tooltip al hover: nombre real */}
-              <span className="pointer-events-none absolute right-full mr-2 hidden whitespace-nowrap rounded-md border border-border/60 bg-background/95 px-2 py-1 text-xs text-foreground shadow group-hover:block">
-                {POTION_NAMES[potionId]}
-              </span>
             </button>
           )
         })}
 
+        {/* Cuadro de dialogo con la pocion actualmente seleccionada
+            (Sprint Polish-Pass - Tarea 3). Se actualiza en cada Tab
+            para que el jugador siempre sepa que tiene activo. */}
+        <div
+          className="mt-1 rounded-md border border-border/50 bg-background/85 px-2 py-1.5 text-center"
+          aria-live="polite"
+        >
+          <p className="text-[9px] uppercase tracking-wider text-muted-foreground">
+            Seleccionada
+          </p>
+          <p
+            className={`text-[11px] font-bold leading-tight ${selectedColor.text}`}
+          >
+            {POTION_NAMES[selectedPotionId]}
+          </p>
+          <p className="text-[9px] font-mono text-muted-foreground">
+            {selectedCount > 0 ? `x${selectedCount}` : "(vacio)"}
+          </p>
+        </div>
+
         {/* Pista de controles */}
-        <footer className="mt-1 border-t border-border/40 pt-1.5 text-center text-[9px] leading-tight text-muted-foreground">
+        <footer className="border-t border-border/40 pt-1.5 text-center text-[9px] leading-tight text-muted-foreground">
           <p>
             <kbd className="rounded bg-muted px-1 text-foreground">Tab</kbd>{" "}
-            <kbd className="rounded bg-muted px-1 text-foreground">↑↓</kbd>
+            <kbd className="rounded bg-muted px-1 text-foreground">↑↓</kbd>{" "}
+            cambiar
           </p>
           <p>
             <kbd className="rounded bg-muted px-1 text-foreground">Q</kbd> usar

@@ -11,7 +11,6 @@ import { Portal } from "../components/game/Portal"
 import { DungeonRoom } from "../components/game/DungeonRoom"
 import { HUD } from "../components/ui/HUD"
 import { Notifications } from "../components/ui/Notifications"
-import { PotionHotbar } from "../components/ui/PotionHotbar"
 import { DUNGEON_NODE_NAMES, DUNGEON_NODE_DESCRIPTIONS, POTION_NAMES } from "../core/dictionary"
 import { useGameStore } from "../core/gameStore"
 import { center, distance, intersectsAABB, isWithinRadius } from "../core/geometry"
@@ -107,12 +106,49 @@ const EXIT_PORTAL: Interactable = {
 // Sprint 4: Configuracion del Jefe / Maquina de Moore
 // ---------------------------------------------------------------------------
 const BOSS_SIZE: Size = { width: 80, height: 80 }
-// Lo plantamos al centro de la sala para que el jugador siempre tenga que
-// acercarse para interactuar. La sala del jefe no tiene puertas-hijo,
-// asi que el centro queda libre.
-const BOSS_POSITION: Vector2D = {
-  x: WORLD_SIZE.width / 2 - BOSS_SIZE.width / 2,
-  y: WORLD_SIZE.height / 2 - BOSS_SIZE.height / 2,
+
+// Sprint Polish-Pass - Tarea 4: el jefe spawnea en el lado opuesto de la
+// sala respecto a la puerta por la que el jugador entro. Asi evitamos
+// que el simple acto de cruzar la puerta dispare el estimulo de vision (v).
+//
+// Si el jugador entra por la izquierda  -> jefe a la derecha.
+// Si entra por arriba                   -> jefe abajo. (Y viceversa.)
+//
+// `backDir` representa la pared donde quedo la puerta de regreso, que es
+// justamente la puerta por la que entro el jugador. El jefe se planta
+// junto a la pared opuesta (OPPOSITE[backDir]) con un margen razonable.
+const BOSS_WALL_MARGIN = 80
+function getBossPosition(backDir: DoorDir | null): Vector2D {
+  // Si por algun motivo no conocemos la entrada, fallback al centro.
+  if (!backDir) {
+    return {
+      x: WORLD_SIZE.width / 2 - BOSS_SIZE.width / 2,
+      y: WORLD_SIZE.height / 2 - BOSS_SIZE.height / 2,
+    }
+  }
+  const opposite = OPPOSITE[backDir]
+  switch (opposite) {
+    case "left":
+      return {
+        x: BOSS_WALL_MARGIN,
+        y: WORLD_SIZE.height / 2 - BOSS_SIZE.height / 2,
+      }
+    case "right":
+      return {
+        x: WORLD_SIZE.width - BOSS_SIZE.width - BOSS_WALL_MARGIN,
+        y: WORLD_SIZE.height / 2 - BOSS_SIZE.height / 2,
+      }
+    case "top":
+      return {
+        x: WORLD_SIZE.width / 2 - BOSS_SIZE.width / 2,
+        y: BOSS_WALL_MARGIN,
+      }
+    case "bottom":
+      return {
+        x: WORLD_SIZE.width / 2 - BOSS_SIZE.width / 2,
+        y: WORLD_SIZE.height - BOSS_SIZE.height - BOSS_WALL_MARGIN,
+      }
+  }
 }
 // Umbrales de deteccion (px). Calculo: distancia euclidiana entre centros
 // del jugador y del jefe.
@@ -360,6 +396,14 @@ export function DungeonScene() {
   // Sala del jefe = nodo "jefe" sin hijos (el ultimo de la rama).
   const bossPresent = !!isBossRoom && !!hasNoChildren
 
+  // Sprint Polish-Pass - Tarea 4: posicion del jefe segun la pared
+  // por la que entro el jugador. Se recalcula cuando cambia la sala
+  // o la direccion de la puerta de regreso.
+  const bossPosition = useMemo(
+    () => getBossPosition(currentConfig?.backDir ?? null),
+    [currentConfig?.backDir],
+  )
+
   // -------------------------------------------------------------------------
   // Sprint 4 - Llamada a /api/boss-action y aplicacion de la transicion.
   // Centralizada en un callback para reusarla desde el polling y desde
@@ -433,7 +477,7 @@ export function DungeonScene() {
       // que el ritmo del polling no dependa del re-render de React.
       const dist = distance(
         center(snap.playerPosition, PLAYER_SIZE),
-        center(BOSS_POSITION, BOSS_SIZE),
+        center(bossPosition, BOSS_SIZE),
       )
 
       let stim: BossStimulus | null = null
@@ -459,8 +503,9 @@ export function DungeonScene() {
       window.clearInterval(interval)
     }
     // playerPosition NO va aqui: lo leemos via getState() en cada tick
-    // para evitar re-crear el interval en cada frame.
-  }, [bossPresent, sendBossStimulus])
+    // para evitar re-crear el interval en cada frame. bossPosition si
+    // entra como dep porque cambia con la entrada del jugador a la sala.
+  }, [bossPresent, sendBossStimulus, bossPosition])
 
   // -------------------------------------------------------------------------
   // Sprint 4 - Handler de "usar pocion seleccionada" (tecla Q).
@@ -546,17 +591,15 @@ export function DungeonScene() {
 
         {/* Jefe (solo en la sala con tipo "jefe" sin hijos) */}
         {bossPresent && (
-          <Boss position={BOSS_POSITION} size={BOSS_SIZE} state={bossState} />
+          <Boss position={bossPosition} size={BOSS_SIZE} state={bossState} />
         )}
 
         {/* Jugador */}
         <Player position={playerPosition} size={PLAYER_SIZE} />
 
-        {/* HUD compartido (inventario + controles) */}
+        {/* HUD compartido (inventario + controles + hotbar
+            integrada en la columna izquierda - Sprint Polish-Pass T1). */}
         <HUD />
-
-        {/* Barra rapida de pociones (Sprint 4) */}
-        <PotionHotbar />
 
         {/* Etiqueta de la sala actual (top center) */}
         {currentNode && (
