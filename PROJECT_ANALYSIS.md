@@ -55,14 +55,14 @@ El juego tiene **dos escenas** que se intercambian con `currentScene`:
 ### Tipos
 | Archivo | Contenido |
 |---|---|
-| `src/types/game.ts` | `Vector2D`, `Size`, `Ingredient`, `PotionId`, `AutomatonState`, `TransitionOutput`, `CraftRequest/Response`, `Interactable`. |
+| `src/types/game.ts` | `Vector2D`, `Size`, `Ingredient`, `PotionId`, `AutomatonState`, `TransitionOutput`, `CraftRequest/Response`, `Interactable`, `CombatRequest/Response` (Tarea 3.3). |
 | `src/types/dungeon.ts` | `DungeonNodeType`, `DungeonNode`, `DungeonResponse`. |
-| `src/types/boss.ts` | `BossState`, `BossStimulus`, `BossAction`, `BossRequest/Response`, `parseBossState`. |
+| `src/types/boss.ts` | `BossState`, `BossStimulus` (incluye `"h"` desde Fase 4), `BossAction`, `BossRequest/Response`, `parseBossState`. |
 
 ### Servicios
 | Archivo | Rol |
 |---|---|
-| `src/services/api.ts` | 3 fetch al backend FastAPI: `craft()`, `generateDungeon()`, `bossAction()`. |
+| `src/services/api.ts` | 4 fetch al backend FastAPI: `craft()`, `generateDungeon()`, `bossAction()`, `combatHit()` (Tarea 3.3). |
 
 ### Hooks
 | Archivo | Rol |
@@ -87,6 +87,8 @@ El juego tiene **dos escenas** que se intercambian con `currentScene`:
 | `src/components/ui/PotionHotbar.tsx` | Barra vertical de 10 slots de pociones. |
 | `src/components/ui/CraftingModal.tsx` | Modal de crafteo (Mealy). |
 | `src/components/ui/Notifications.tsx` | Toasts flotantes. |
+| `src/components/ui/BossHealthBar.tsx` | Barra de vida del jefe (2 fases, indicador Modo Furia). Tarea 3.3. |
+| `src/components/ui/PlayerHealthBar.tsx` | Barra de vida del jugador (colores dinámicos por HP). Tarea 3.3. |
 
 ### Escenas
 | Archivo | Rol |
@@ -316,3 +318,163 @@ normalizados con 0.707).
 - Las constantes de combate están **arriba del archivo**, todas
   juntas y comentadas, para que un game-designer pueda tunear sin
   tocar la lógica.
+
+### Tarea 3.3 — Sistema de Vida (Máquina de Turing)
+
+**Spec corta:** implementar barras de vida para jugador (1×100 HP) y jefe
+(2×100 HP), con el cálculo de daño delegado al backend via endpoint
+`/api/combat/hit` que ejecuta una **Máquina de Turing** para la sustracción
+propia. El jefe tiene dos fases: al agotar la primera barra se activa el
+**Modo Furia** automáticamente. Las pociones P1 y P5 curan al jugador
+(suma acotada local, no requiere backend). Game Over transporta al bosque.
+
+**Archivos modificados:**
+
+- `src/types/game.ts` — Nuevos tipos para la API de combate:
+  - `CombatRequest`: `{ hp_actual: number, dano_recibido: number }`
+  - `CombatResponse`: `{ hp_resultante: number, cinta_final: string, mensaje_ui: string }`
+
+- `src/services/api.ts` — Nueva función `combatHit(payload: CombatRequest): Promise<CombatResponse>`
+  que llama a `POST /api/combat/hit`. Importa los tipos de `game.ts`.
+
+- `src/core/gameStore.ts` — Estado global de HP expandido:
+  - **Jugador:**
+    - `playerHp: number` (default 100)
+    - `setPlayerHp(hp)` — setter con clamp `[0, 100]`
+    - `healPlayer(amount)` — suma acotada (`Math.min(hp + amount, 100)`)
+    - `damagePlayer(amount)` — resta con floor en 0 (legacy, no se usa ya)
+    - `playerHealthFlash: boolean` + `setPlayerHealthFlash` — feedback visual
+  - **Jefe:**
+    - `bossHp: number` (default 100) — HP de la barra actual
+    - `bossLives: number` (default 2) — barras restantes
+    - `setBossHp(hp)`, `setBossLives(lives)` — setters con clamp
+    - `applyBossDamage(newHp)` — lógica de cambio de fase:
+      - Si `newHp === 0 && bossLives === 2`: recarga barra, pasa a `bossLives=1`,
+        activa `isBossFurious=true` (Modo Furia)
+      - Si `newHp === 0 && bossLives === 1`: jefe muere (`bossLives=0`)
+      - Caso normal: actualiza `bossHp` y activa flash
+    - `resetBossHealth()` — reset completo (100 HP, 2 vidas)
+    - `bossHealthFlash: boolean` + `setBossHealthFlash` — feedback visual
+  - `resetBoss()` ahora también resetea `bossHp=100`, `bossLives=2`,
+    `bossHealthFlash=false`.
+
+- `src/components/ui/BossHealthBar.tsx` *(archivo nuevo)* — Componente de UI:
+  - Posición: centrado horizontal, top-4, z-50
+  - Muestra: nombre del jefe, indicador de fase (1/2), barra de progreso
+  - Colores: barra roja (`bg-destructive`), fondo oscuro
+  - Parpadeo: clase `animate-pulse` cuando `bossHealthFlash=true`, se apaga
+    automáticamente tras 150ms vía `setTimeout`
+  - Modo Furia: borde y texto morado cuando `isBossFurious=true`
+
+- `src/components/ui/PlayerHealthBar.tsx` *(archivo nuevo)* — Componente de UI:
+  - Posición: esquina inferior derecha, z-40 (evita superposición con HUD)
+  - Muestra: icono de corazón, HP actual/100, barra de progreso
+  - Colores: barra verde (`bg-emerald-500`), se vuelve ámbar <50%, roja <25%
+  - Parpadeo: igual que la del jefe, 150ms de flash
+
+- `src/scenes/DungeonScene.tsx` — Integración completa:
+  - **Imports:** `BossHealthBar`, `PlayerHealthBar`, `combatHit`
+  - **Constantes de daño:**
+    - `PLAYER_PROJECTILE_DAMAGE = 10`
+    - `BOSS_BASIC_PROJECTILE_DAMAGE = 15`
+    - `BOSS_HEAVY_PROJECTILE_DAMAGE = 25`
+  - **Constantes de curación:**
+    - `POTION_P1_HEAL = 25` (Poción Menor de Curación)
+    - `POTION_P5_HEAL = 50` (Poción de Curación Mayor)
+  - **Colisión proyectil jugador → jefe:**
+    - Llama a `combatHit({ hp_actual: bossHp, dano_recibido: 10 })`
+    - Respuesta aplica `applyBossDamage(res.hp_resultante)`
+    - La lógica de cambio de fase y activación de Modo Furia es automática
+  - **Colisión proyectil jefe → jugador (Refactor 3.1):**
+    - Llama a `combatHit({ hp_actual: playerHp, dano_recibido: damage })`
+    - Respuesta aplica `setPlayerHp(res.hp_resultante)` + flash
+    - **Game Over:** si `hp_resultante === 0`:
+      - `setCurrentScene("forest")`
+      - `setPlayerPosition({ x: 230, y: 260 })`
+      - `setPlayerHp(100)`
+      - `setPlayerInvisible(false)`
+      - `resetBoss()`
+      - `setBossProyectiles([])` — limpia proyectiles residuales
+  - **Handler `onUsePotion` actualizado:**
+    - P1: `healPlayer(25)` + notificación
+    - P5: `healPlayer(50)` + notificación
+    - P4: invisibilidad (sin cambios)
+    - Otras: mensaje "sin efecto"
+  - **`exitDungeon()` actualizado:** también llama `setPlayerHp(100)` para
+    regenerar al salir de la mazmorra
+  - **Render:** `<BossHealthBar />` solo en sala del jefe, `<PlayerHealthBar />`
+    siempre visible
+  - **Etiqueta de sala:** se desplaza a `top-16` cuando el jefe está presente
+    para no tapar la barra de vida
+
+**Flujo de daño (resumen):**
+
+```
+Proyectil impacta
+       │
+       ▼
+combatHit({ hp_actual, dano_recibido })
+       │
+       ▼
+Backend (Máquina de Turing)
+       │
+       ▼
+{ hp_resultante, cinta_final, mensaje_ui }
+       │
+       ▼
+Frontend aplica hp_resultante al store
+       │
+       ├──► applyBossDamage() → cambio de fase / Modo Furia
+       └──► setPlayerHp() → Game Over si === 0
+```
+
+**Notas de diseño:**
+- El daño SIEMPRE pasa por la API de Turing (consistencia académica).
+- La curación de pociones es local (suma acotada) porque la Máquina de
+  Turing está diseñada solo para sustracción.
+- Los componentes de barra de vida leen directamente del store y se
+  auto-limpian el flash con `setTimeout`, sin necesidad de props.
+- El Game Over es instantáneo (no hay pantalla de muerte) para mantener
+  el flujo ágil del prototipo.
+
+### Fase 4 (3.2) — Estímulo de Hostilidad "h"
+
+**Spec corta:** agregar un cuarto estímulo `"h"` (hostilidad/hit) a la
+Máquina de Moore del jefe. Se dispara cuando un proyectil del jugador
+**impacta** al jefe O cuando **pasa muy cerca** (near miss). Esto garantiza
+que el jefe reaccione aunque esté fuera del rango de visión/ruido.
+
+**Archivos modificados:**
+
+- `src/types/boss.ts` — Actualizado `BossStimulus`:
+  - Antes: `"r" | "v" | "p"`
+  - Ahora: `"r" | "v" | "p" | "h"`
+  - Documentación del estímulo añadida en comentarios
+
+- `src/scenes/DungeonScene.tsx` — Implementación del estímulo:
+  - **Constante:** `BOSS_NEAR_MISS_THRESHOLD = 40` (px de margen extra)
+  - **Tipo `ProjectileState` expandido:** nuevo campo opcional
+    `triggeredNearMiss?: boolean` para evitar spam de llamadas a la API
+  - **Impacto directo:** antes de llamar a `combatHit`, se envía
+    `bossAction({ estado_actual, estimulo: "h" })` si el jefe no está
+    ya en estado `"C"`. Esto lo despierta inmediatamente.
+  - **Near miss:** si el proyectil pasa a distancia
+    `< bossRadius + BOSS_NEAR_MISS_THRESHOLD` del centro del jefe SIN
+    impactar, se marca `triggeredNearMiss=true` y se envía el estímulo
+    `"h"` una sola vez por proyectil.
+  - **Optimización:** el estímulo solo se envía si `curState !== "C"`
+    para evitar llamadas redundantes cuando el jefe ya está atacando.
+
+**Transiciones esperadas (backend Moore):**
+- `A + h → C` (de Patrullar a Atacar)
+- `B + h → C` (de Buscar a Atacar)
+- `C + h → C` (ya atacando, sin cambio)
+
+**Notas de diseño:**
+- El flag `triggeredNearMiss` evita que un proyectil que viaja paralelo
+  al jefe dispare el estímulo en cada frame mientras está en el umbral.
+- El near miss usa `distance()` al centro del jefe, no AABB, porque
+  queremos un radio de percepción circular (más natural para "sentir"
+  un proyectil que pasa cerca).
+- El estímulo se envía **antes** del daño para que la IA del jefe
+  reaccione en el mismo frame, no en el siguiente tick de polling.
