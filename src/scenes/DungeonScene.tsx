@@ -22,7 +22,7 @@ import { useHotbarControls } from "../hooks/useHotbarControls"
 import { usePlayerMovement } from "../hooks/usePlayerMovement"
 import { bossAction, combatHit, generateDungeon } from "../services/api"
 import { parseBossState } from "../types/boss"
-import type { BossState, BossStimulus } from "../types/boss"
+import type { BossAction, BossState, BossStimulus } from "../types/boss"
 import type { DungeonNode } from "../types/dungeon"
 import type { Interactable, PotionId, Size, Vector2D } from "../types/game"
 
@@ -832,7 +832,7 @@ export function DungeonScene() {
               const newState = parseBossState(res.nuevo_estado)
               if (newState) {
                 useGameStore.getState().setBossState(newState)
-                useGameStore.getState().setBossAction(res.accion)
+                useGameStore.getState().setBossAction(res.accion as BossAction)
               }
             }).catch((err) => {
               console.error("[v0] Error en bossAction (hostilidad):", err)
@@ -879,7 +879,7 @@ export function DungeonScene() {
                 const newState = parseBossState(res.nuevo_estado)
                 if (newState) {
                   useGameStore.getState().setBossState(newState)
-                  useGameStore.getState().setBossAction(res.accion)
+                  useGameStore.getState().setBossAction(res.accion as BossAction)
                 }
               }).catch((err) => {
                 console.error("[v0] Error en bossAction (near miss):", err)
