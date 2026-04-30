@@ -162,6 +162,9 @@ export function HUD() {
         <p>
           <kbd className="rounded bg-muted px-1 text-foreground">Q</kbd> usar pocion
         </p>
+        <p>
+          <kbd className="rounded bg-muted px-1 text-foreground">J</kbd> disparar
+        </p>
       </div>
     </>
   )

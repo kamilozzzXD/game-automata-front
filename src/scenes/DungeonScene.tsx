@@ -8,6 +8,7 @@ import {
 import { Boss } from "../components/game/Boss"
 import { Player } from "../components/game/Player"
 import { Portal } from "../components/game/Portal"
+import { Projectile } from "../components/game/Projectile"
 import { DungeonRoom } from "../components/game/DungeonRoom"
 import { HUD } from "../components/ui/HUD"
 import { Notifications } from "../components/ui/Notifications"
@@ -159,6 +160,34 @@ const NOISE_RADIUS = 260 // dentro de este radio (y fuera del de vision) -> "r"
 const BOSS_TICK_MS = 600
 // Duracion del efecto de invisibilidad (ms). Se consume 1 unidad de P4.
 const INVISIBILITY_MS = 6000
+
+// ---------------------------------------------------------------------------
+// Tarea 3.1 - Configuracion del sistema de combate del jugador.
+// ---------------------------------------------------------------------------
+// Tamano del proyectil (cuadrado para AABB; visualmente es circular).
+const PROJECTILE_SIZE: Size = { width: 14, height: 14 }
+// Velocidad: pixeles avanzados por frame de rAF (a 60fps -> ~360 px/s).
+const PROJECTILE_SPEED = 6
+// Distancia maxima en pixeles antes de "missing" (auto-destruccion).
+// Si no destruimos los proyectiles, el array crece indefinidamente y
+// la pestana acaba colapsando.
+const PROJECTILE_MAX_DISTANCE = 400
+// Cooldown entre disparos para evitar que mantener J pulsada genere
+// 60 proyectiles por segundo.
+const SHOOT_COOLDOWN_MS = 180
+
+type ProjectileState = {
+  id: number
+  // Posicion del CENTRO del proyectil (no la esquina). Es lo que pinta
+  // el componente <Projectile /> y lo que usamos para AABB-vs-jefe.
+  x: number
+  y: number
+  // Vector unitario de movimiento, capturado en el momento del disparo.
+  dx: number
+  dy: number
+  // Acumulado para sacar el proyectil cuando se pasa de PROJECTILE_MAX_DISTANCE.
+  distanciaRecorrida: number
+}
 
 // Configuracion espacial de cada sala visitada. Se cachea por id para que las
 // puertas NO salten de pared al volver a una sala ya explorada.
@@ -550,6 +579,139 @@ export function DungeonScene() {
     onUsePotion,
   })
 
+  // -------------------------------------------------------------------------
+  // Tarea 3.1 - Sistema de combate del jugador (proyectiles).
+  //
+  // Diseno:
+  //   - Estado LOCAL de la escena (no del store global) para evitar
+  //     re-renders innecesarios en componentes ajenos al combate.
+  //   - El disparo se habilita SOLO cuando el jugador esta en la sala
+  //     del jefe (`bossPresent`), porque es donde hay un objetivo.
+  //   - El movimiento de los proyectiles vive en un unico useEffect con
+  //     requestAnimationFrame: actualiza posiciones, descarta los que
+  //     se pasan de distancia/salen de pantalla y revisa AABB contra
+  //     el jefe en cada frame.
+  // -------------------------------------------------------------------------
+  const [proyectiles, setProyectiles] = useState<ProjectileState[]>([])
+  // Ref para acceder al array fresco dentro del rAF sin meter dependencia.
+  const proyectilesRef = useRef<ProjectileState[]>([])
+  proyectilesRef.current = proyectiles
+  // Ref para el cooldown del disparo (no necesita causar re-render).
+  const lastShotAtRef = useRef<number>(0)
+  // Para que cada proyectil tenga un id unico aun si se disparan dos
+  // en el mismo `Date.now()` (cooldown 180ms hace casi imposible la
+  // colision, pero esto vuelve el id determinista y a prueba de balas).
+  const projectileIdRef = useRef<number>(0)
+
+  // Listener de la tecla J -> spawn de proyectil.
+  // Solo activo en la sala del jefe y con movimiento habilitado.
+  useEffect(() => {
+    if (!bossPresent || !movementEnabled) return
+
+    const handler = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== "j") return
+      e.preventDefault()
+      const now = performance.now()
+      if (now - lastShotAtRef.current < SHOOT_COOLDOWN_MS) return
+      lastShotAtRef.current = now
+
+      const snap = useGameStore.getState()
+      const dir = snap.lastDirection
+      // Defensa: si por algun motivo el vector es (0,0), no disparamos.
+      if (dir.x === 0 && dir.y === 0) return
+
+      const playerCenter = center(snap.playerPosition, PLAYER_SIZE)
+      projectileIdRef.current += 1
+      const nuevo: ProjectileState = {
+        id: projectileIdRef.current,
+        x: playerCenter.x,
+        y: playerCenter.y,
+        dx: dir.x,
+        dy: dir.y,
+        distanciaRecorrida: 0,
+      }
+      setProyectiles((prev) => [...prev, nuevo])
+    }
+
+    window.addEventListener("keydown", handler)
+    return () => window.removeEventListener("keydown", handler)
+  }, [bossPresent, movementEnabled])
+
+  // Game loop de los proyectiles + colisiones.
+  // Se relanza cuando cambia la sala (bossPresent o bossPosition) y se
+  // detiene si no hay proyectiles activos para no quemar CPU sin razon.
+  useEffect(() => {
+    if (!bossPresent) {
+      // Salimos de la sala del jefe: limpiamos los proyectiles vivos
+      // para que no aparezcan flotando si el jugador vuelve a entrar.
+      if (proyectilesRef.current.length > 0) setProyectiles([])
+      return
+    }
+
+    let rafId = 0
+    const tick = () => {
+      const current = proyectilesRef.current
+      if (current.length === 0) {
+        // Nada que mover; pausa el loop hasta que vuelva a haber.
+        rafId = requestAnimationFrame(tick)
+        return
+      }
+
+      // Rect del jefe para la colision AABB. Usamos la esquina sup-izq
+      // de bossPosition + BOSS_SIZE; el AABB del proyectil se construye
+      // a partir de su CENTRO (x, y) - PROJECTILE_SIZE/2.
+      const bossPos = bossPosition
+      const bossSize = BOSS_SIZE
+
+      const next: ProjectileState[] = []
+      for (const p of current) {
+        const nx = p.x + p.dx * PROJECTILE_SPEED
+        const ny = p.y + p.dy * PROJECTILE_SPEED
+        const nDist = p.distanciaRecorrida + PROJECTILE_SPEED
+
+        // Missing por distancia recorrida.
+        if (nDist > PROJECTILE_MAX_DISTANCE) continue
+        // Missing por salir del mundo (con un margen del tamano del proyectil).
+        if (
+          nx < -PROJECTILE_SIZE.width ||
+          nx > WORLD_SIZE.width + PROJECTILE_SIZE.width ||
+          ny < -PROJECTILE_SIZE.height ||
+          ny > WORLD_SIZE.height + PROJECTILE_SIZE.height
+        ) {
+          continue
+        }
+
+        // Hit: AABB del proyectil vs AABB del jefe.
+        const projPos: Vector2D = {
+          x: nx - PROJECTILE_SIZE.width / 2,
+          y: ny - PROJECTILE_SIZE.height / 2,
+        }
+        if (intersectsAABB(projPos, PROJECTILE_SIZE, bossPos, bossSize)) {
+          // Tarea 3.1 - Spec: con un console.log y destruir el proyectil
+          // basta. La logica de vida/dano queda para una tarea posterior.
+          console.log("[v0] ¡Impacto al Jefe!")
+          continue
+        }
+
+        next.push({ ...p, x: nx, y: ny, distanciaRecorrida: nDist })
+      }
+
+      // Solo actualizamos el state si hubo cambio real (movimiento o muerte
+      // de algun proyectil). Comparar por longitud + referencia es barato.
+      if (
+        next.length !== current.length ||
+        next.some((p, i) => p !== current[i])
+      ) {
+        setProyectiles(next)
+      }
+
+      rafId = requestAnimationFrame(tick)
+    }
+
+    rafId = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(rafId)
+  }, [bossPresent, bossPosition])
+
   return (
     <main className="flex min-h-screen w-full items-center justify-center bg-background p-4">
       <div
@@ -593,6 +755,19 @@ export function DungeonScene() {
         {bossPresent && (
           <Boss position={bossPosition} size={BOSS_SIZE} state={bossState} />
         )}
+
+        {/* Proyectiles del jugador (Tarea 3.1).
+            Se renderizan SIEMPRE que haya entradas vivas en el array.
+            La logica del game loop ya se asegura de vaciar el array al
+            salir de la sala del jefe. */}
+        {proyectiles.map((p) => (
+          <Projectile
+            key={p.id}
+            x={p.x}
+            y={p.y}
+            size={PROJECTILE_SIZE.width}
+          />
+        ))}
 
         {/* Jugador */}
         <Player position={playerPosition} size={PLAYER_SIZE} />
