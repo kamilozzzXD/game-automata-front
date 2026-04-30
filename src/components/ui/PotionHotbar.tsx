@@ -38,15 +38,20 @@ export function PotionHotbar() {
   const selectedCount = inventory[selectedPotionId] ?? 0
 
   return (
+    // Sprint Polish-Pass v2 - Ticket UI: la hotbar deja de ser un solo panel
+    // gigante. Ahora es una columna de tarjetas independientes:
+    //   1) panel exclusivo con los 10 slots (sin titulo redundante),
+    //   2) tarjeta "Seleccionada" con su propio contorno,
+    //   3) tarjeta de controles con su propio contorno,
+    //   4) indicador "Invisible" (solo cuando aplica).
+    // De este modo el panel oscuro de los slots envuelve UNICAMENTE los
+    // 10 accesos rapidos, como pide el ticket.
     <aside
-      className="pointer-events-auto select-none"
+      className="pointer-events-auto flex select-none flex-col gap-2"
       aria-label="Barra rapida de pociones"
     >
+      {/* (1) Panel exclusivo de los 10 slots */}
       <div className="flex flex-col items-stretch gap-1.5 rounded-xl border border-border/60 bg-background/75 p-2 shadow-2xl backdrop-blur">
-        <header className="px-1 pb-1 text-center text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Pociones
-        </header>
-
         {HOTBAR_SLOTS.map((potionId, i) => {
           const count = inventory[potionId] ?? 0
           const isSelected = i === selectedIndex
@@ -96,49 +101,49 @@ export function PotionHotbar() {
             </button>
           )
         })}
+      </div>
 
-        {/* Cuadro de dialogo con la pocion actualmente seleccionada
-            (Sprint Polish-Pass - Tarea 3). Se actualiza en cada Tab
-            para que el jugador siempre sepa que tiene activo. */}
+      {/* (2) Tarjeta independiente con la pocion actualmente seleccionada.
+          Se actualiza en cada Tab para que el jugador siempre sepa que
+          tiene activo. */}
+      <div
+        className="rounded-lg border border-border/60 bg-background/75 px-2 py-1.5 text-center shadow-xl backdrop-blur"
+        aria-live="polite"
+      >
+        <p className="text-[9px] uppercase tracking-wider text-muted-foreground">
+          Seleccionada
+        </p>
+        <p
+          className={`text-[11px] font-bold leading-tight ${selectedColor.text}`}
+        >
+          {POTION_NAMES[selectedPotionId]}
+        </p>
+        <p className="text-[9px] font-mono text-muted-foreground">
+          {selectedCount > 0 ? `x${selectedCount}` : "(vacio)"}
+        </p>
+      </div>
+
+      {/* (3) Tarjeta independiente con la pista de controles */}
+      <div className="rounded-lg border border-border/60 bg-background/75 px-2 py-1.5 text-center text-[9px] leading-tight text-muted-foreground shadow-xl backdrop-blur">
+        <p>
+          <kbd className="rounded bg-muted px-1 text-foreground">Tab</kbd>{" "}
+          <kbd className="rounded bg-muted px-1 text-foreground">↑↓</kbd>{" "}
+          cambiar
+        </p>
+        <p>
+          <kbd className="rounded bg-muted px-1 text-foreground">Q</kbd> usar
+        </p>
+      </div>
+
+      {/* (4) Indicador "INVISIBLE ACTIVO" cuando aplica */}
+      {isInvisible && (
         <div
-          className="mt-1 rounded-md border border-border/50 bg-background/85 px-2 py-1.5 text-center"
+          className="rounded-lg border border-cyan-400/60 bg-cyan-400/10 px-2 py-1 text-center text-[10px] font-bold uppercase tracking-wider text-cyan-300 shadow-xl animate-pulse"
           aria-live="polite"
         >
-          <p className="text-[9px] uppercase tracking-wider text-muted-foreground">
-            Seleccionada
-          </p>
-          <p
-            className={`text-[11px] font-bold leading-tight ${selectedColor.text}`}
-          >
-            {POTION_NAMES[selectedPotionId]}
-          </p>
-          <p className="text-[9px] font-mono text-muted-foreground">
-            {selectedCount > 0 ? `x${selectedCount}` : "(vacio)"}
-          </p>
+          Invisible
         </div>
-
-        {/* Pista de controles */}
-        <footer className="border-t border-border/40 pt-1.5 text-center text-[9px] leading-tight text-muted-foreground">
-          <p>
-            <kbd className="rounded bg-muted px-1 text-foreground">Tab</kbd>{" "}
-            <kbd className="rounded bg-muted px-1 text-foreground">↑↓</kbd>{" "}
-            cambiar
-          </p>
-          <p>
-            <kbd className="rounded bg-muted px-1 text-foreground">Q</kbd> usar
-          </p>
-        </footer>
-
-        {/* Indicador "INVISIBLE ACTIVO" cuando aplica */}
-        {isInvisible && (
-          <div
-            className="mt-1 rounded-md border border-cyan-400/60 bg-cyan-400/10 px-2 py-1 text-center text-[10px] font-bold uppercase tracking-wider text-cyan-300 animate-pulse"
-            aria-live="polite"
-          >
-            Invisible
-          </div>
-        )}
-      </div>
+      )}
     </aside>
   )
 }
