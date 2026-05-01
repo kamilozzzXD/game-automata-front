@@ -178,15 +178,6 @@ function SalaDecor({ worldSize }: { worldSize: Size }) {
         }}
         aria-hidden
       />
-      <GiOpenTreasureChest
-        className="absolute text-amber-300/40"
-        size={140}
-        style={{
-          left: worldSize.width - 180,
-          top: 60,
-        }}
-        aria-hidden
-      />
     </>
   )
 }

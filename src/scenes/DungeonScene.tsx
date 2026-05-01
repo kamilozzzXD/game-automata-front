@@ -4,14 +4,17 @@ import {
   GiSkullCrossedBones,
   GiVortex,
   GiWoodenDoor,
+  GiOpenTreasureChest,
 } from "react-icons/gi"
 import { Boss } from "../components/game/Boss"
+import { MiniBoss } from "../components/game/MiniBoss"
 import { Player } from "../components/game/Player"
 import { Portal } from "../components/game/Portal"
 import { Projectile } from "../components/game/Projectile"
 import { DungeonRoom } from "../components/game/DungeonRoom"
 import { IngredientItem } from "../components/game/IngredientItem"
 import { BossHealthBar } from "../components/ui/BossHealthBar"
+import { MiniBossHealthBar } from "../components/ui/MiniBossHealthBar"
 import { PlayerHealthBar } from "../components/ui/PlayerHealthBar"
 import { HUD } from "../components/ui/HUD"
 import { Notifications } from "../components/ui/Notifications"
@@ -25,7 +28,7 @@ import { bossAction, combatHit, generateDungeon } from "../services/api"
 import { parseBossState } from "../types/boss"
 import type { BossAction, BossState, BossStimulus } from "../types/boss"
 import type { DungeonNode } from "../types/dungeon"
-import type { Interactable, PotionId, Size, Vector2D } from "../types/game"
+import type { Ingredient, Interactable, PotionId, Size, Vector2D } from "../types/game"
 
 const WORLD_SIZE: Size = { width: 960, height: 600 }
 const PLAYER_SIZE: Size = { width: 48, height: 48 }
@@ -336,15 +339,24 @@ export function DungeonScene() {
   const setCurrentDungeon = useGameStore((s) => s.setCurrentDungeon)
   const pushNotification = useGameStore((s) => s.pushNotification)
   const collectDungeonIngredients = useGameStore((s) => s.collectDungeonIngredients)
+  const claimSecretRoomPotions = useGameStore((s) => s.claimSecretRoomPotions)
 
   // Sprint 4 - Estado del jefe (Maquina de Moore) e invisibilidad
   const bossState = useGameStore((s) => s.bossState)
+  const bossLives = useGameStore((s) => s.bossLives)
   const setBossState = useGameStore((s) => s.setBossState)
   const setBossActionStore = useGameStore((s) => s.setBossAction)
   const isBossThinking = useGameStore((s) => s.isBossThinking)
   const setIsBossThinking = useGameStore((s) => s.setIsBossThinking)
   const resetBoss = useGameStore((s) => s.resetBoss)
   const setPlayerInvisible = useGameStore((s) => s.setPlayerInvisible)
+
+  // Mini-Boss state
+  const miniBossState = useGameStore((s) => s.miniBossState)
+  const miniBossHp = useGameStore((s) => s.miniBossHp)
+  const setMiniBossState = useGameStore((s) => s.setMiniBossState)
+  const setMiniBossActionStore = useGameStore((s) => s.setMiniBossAction)
+  const resetMiniBoss = useGameStore((s) => s.resetMiniBoss)
 
   // Mapa id -> nodo para resolucion O(1).
   const nodeMap = useMemo(() => {
@@ -504,6 +516,43 @@ export function DungeonScene() {
         })
       }
     }
+
+    // 4) Recolección de Cofre de Sala Secreta (si es sala y no ha sido reclamado)
+    if (currentNode.tipo === "sala" && !currentNode.pociones_reclamadas) {
+      const chestSize = { width: 100, height: 100 }
+      // Centramos el bounding box dentro del ícono de 140px para que la colisión sea más precisa
+      const chestPos = {
+        x: WORLD_SIZE.width - 180 + 20,
+        y: 60 + 20,
+      }
+      
+      if (intersectsAABB(playerPosition, PLAYER_SIZE, chestPos, chestSize)) {
+        // Generar pociones aleatorias
+        const allPotions: PotionId[] = ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10"]
+        const generatedPotions: PotionId[] = []
+        // Entre 2 y 4 pociones para que se sienta recompensante
+        const amount = Math.floor(Math.random() * 3) + 2
+        for (let i = 0; i < amount; i++) {
+          generatedPotions.push(allPotions[Math.floor(Math.random() * allPotions.length)])
+        }
+        
+        claimSecretRoomPotions(currentNode.id, generatedPotions)
+        
+        const counts = generatedPotions.reduce((acc, p) => {
+          acc[p] = (acc[p] || 0) + 1
+          return acc
+        }, {} as Partial<Record<PotionId, number>>)
+        
+        const summary = Object.entries(counts)
+          .map(([k, v]) => `${POTION_NAMES[k as PotionId]} x${v}`)
+          .join(", ")
+          
+        pushNotification({
+          kind: "success",
+          message: `Has encontrado un tesoro mágico: ${summary}`,
+        })
+      }
+    }
   }, [
     playerPosition,
     currentNode,
@@ -514,6 +563,7 @@ export function DungeonScene() {
     roomConfigs,
     setPlayerPosition,
     collectDungeonIngredients,
+    claimSecretRoomPotions,
     pushNotification,
   ])
 
@@ -599,12 +649,24 @@ export function DungeonScene() {
   const bossPositionRef = useRef<Vector2D>(initialBossPosition)
   bossPositionRef.current = bossPosition
 
+  const isSecretRoom = currentNode?.tipo === "sala"
+  const secretBossPresent = !!isSecretRoom && !(currentNode?.enemigo_derrotado)
+
+  // Comparten la misma posición inicial
+  const [miniBossPosition, setMiniBossPosition] = useState<Vector2D>(initialBossPosition)
+  const miniBossPositionRef = useRef<Vector2D>(initialBossPosition)
+  miniBossPositionRef.current = miniBossPosition
+
   // Cuando cambia la sala (o la pared de entrada), reseteamos la posicion
   // del jefe a su spawn. NO escribimos cada frame: solo en transiciones.
   useEffect(() => {
     setBossPosition(initialBossPosition)
     bossPositionRef.current = initialBossPosition
-  }, [initialBossPosition])
+    
+    setMiniBossPosition(initialBossPosition)
+    miniBossPositionRef.current = initialBossPosition
+    resetMiniBoss()
+  }, [initialBossPosition, resetMiniBoss])
 
   // -------------------------------------------------------------------------
   // Sprint 4 - Llamada a /api/boss-action y aplicacion de la transicion.
@@ -639,7 +701,28 @@ export function DungeonScene() {
         setIsBossThinking(false)
       }
     },
-    [pushNotification, setBossActionStore, setBossState, setIsBossThinking],
+    [setBossState, setBossActionStore, setIsBossThinking],
+  )
+
+  const sendMiniBossStimulus = useCallback(
+    async (stimulus: BossStimulus, currentState: BossState) => {
+      if (useGameStore.getState().isBossThinking) return
+      setIsBossThinking(true)
+      try {
+        const res = await bossAction({
+          estado_actual: currentState,
+          estimulo: stimulus,
+        })
+        const parsed = parseBossState(res.nuevo_estado)
+        if (parsed) setMiniBossState(parsed)
+        setMiniBossActionStore(res.accion as never)
+      } catch (err) {
+        console.error("[v0] Error consultando IA del mini-jefe", err)
+      } finally {
+        setIsBossThinking(false)
+      }
+    },
+    [setMiniBossState, setMiniBossActionStore, setIsBossThinking],
   )
 
   // -------------------------------------------------------------------------
@@ -709,6 +792,31 @@ export function DungeonScene() {
     // y bossPositionRef en cada tick para evitar re-crear el interval cada
     // vez que el jefe se mueve (a 60fps).
   }, [bossPresent, sendBossStimulus])
+
+  // Polling para el Mini-Jefe: si estamos en sala secreta y esta vivo,
+  // consulta constantemente su vista hacia el jugador.
+  useEffect(() => {
+    if (!secretBossPresent) return
+
+    const intervalId = setInterval(() => {
+      const snap = useGameStore.getState()
+      if (snap.miniBossHp <= 0) return
+      if (snap.isPlayerInvisible) return
+
+      const playerCenter = center(snap.playerPosition, PLAYER_SIZE)
+      const miniBossCenter = center(miniBossPositionRef.current, BOSS_SIZE)
+      const dist = distance(miniBossCenter, playerCenter)
+
+      const curState = snap.miniBossState
+      if (dist <= VISION_RADIUS) {
+        if (curState !== "C") {
+          void sendMiniBossStimulus("v", curState)
+        }
+      }
+    }, BOSS_TICK_MS)
+
+    return () => clearInterval(intervalId)
+  }, [secretBossPresent, sendMiniBossStimulus])
 
   // -------------------------------------------------------------------------
   // Sprint 4 - Handler de "usar pocion seleccionada" (tecla Q).
@@ -798,9 +906,9 @@ export function DungeonScene() {
   const projectileIdRef = useRef<number>(0)
 
   // Listener de la tecla J -> spawn de proyectil.
-  // Solo activo en la sala del jefe y con movimiento habilitado.
+  // Solo activo en la sala del jefe o sala secreta con enemigo vivo.
   useEffect(() => {
-    if (!bossPresent || !movementEnabled) return
+    if ((!bossPresent && !secretBossPresent) || !movementEnabled) return
 
     const handler = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() !== "j") return
@@ -829,15 +937,14 @@ export function DungeonScene() {
 
     window.addEventListener("keydown", handler)
     return () => window.removeEventListener("keydown", handler)
-  }, [bossPresent, movementEnabled])
+  }, [bossPresent, secretBossPresent, movementEnabled])
 
   // Game loop de los proyectiles + colisiones.
   // Se relanza cuando cambia la sala (bossPresent o bossPosition) y se
   // detiene si no hay proyectiles activos para no quemar CPU sin razon.
   useEffect(() => {
-    if (!bossPresent) {
-      // Salimos de la sala del jefe: limpiamos los proyectiles vivos
-      // para que no aparezcan flotando si el jugador vuelve a entrar.
+    if (!bossPresent && !secretBossPresent) {
+      // Salimos de la sala: limpiamos los proyectiles vivos
       if (proyectilesRef.current.length > 0) setProyectiles([])
       return
     }
@@ -875,52 +982,81 @@ export function DungeonScene() {
           continue
         }
 
-        // Hit: AABB del proyectil vs AABB del jefe.
+        // Hit: AABB del proyectil vs AABB del objetivo activo.
         const projPos: Vector2D = {
           x: nx - PROJECTILE_SIZE.width / 2,
           y: ny - PROJECTILE_SIZE.height / 2,
         }
-        if (intersectsAABB(projPos, PROJECTILE_SIZE, bossPos, bossSize)) {
-          // Fase 4 (3.2): Enviar estímulo "h" (hostilidad) para despertar al jefe.
-          // Esto garantiza que el jefe reaccione al primer impacto incluso si
-          // estaba fuera de rango de visión/ruido.
-          const curState = useGameStore.getState().bossState
-          if (curState !== "C") {
-            void bossAction({ estado_actual: curState, estimulo: "h" }).then((res) => {
-              const newState = parseBossState(res.nuevo_estado)
-              if (newState) {
-                useGameStore.getState().setBossState(newState)
-                useGameStore.getState().setBossAction(res.accion as BossAction)
-              }
-            }).catch((err) => {
-              console.error("[v0] Error en bossAction (hostilidad):", err)
-            })
-          }
+        
+        let targetPos: Vector2D | null = null
+        let targetSize = BOSS_SIZE
+        if (bossPresent) targetPos = bossPositionRef.current
+        else if (secretBossPresent) targetPos = miniBossPositionRef.current
 
-          // Tarea 3.3: llamar a la API de combate (Máquina de Turing)
-          // para calcular el daño y actualizar la vida del jefe.
-          const currentBossHp = useGameStore.getState().bossHp
-          const bossLives = useGameStore.getState().bossLives
-          // Solo procesamos si el jefe sigue vivo
-          if (bossLives > 0) {
-            void combatHit({
-              hp_actual: currentBossHp,
-              dano_recibido: PLAYER_PROJECTILE_DAMAGE,
-            }).then((res) => {
-              useGameStore.getState().applyBossDamage(res.hp_resultante)
-            }).catch((err) => {
-              console.error("[v0] Error en combatHit (jefe):", err)
-            })
+        if (targetPos && intersectsAABB(projPos, PROJECTILE_SIZE, targetPos, targetSize)) {
+          if (bossPresent) {
+            // Fase 4 (3.2): Enviar estímulo "h" al Jefe
+            const curState = useGameStore.getState().bossState
+            if (curState !== "C") {
+              void bossAction({ estado_actual: curState, estimulo: "h" }).then((res) => {
+                const newState = parseBossState(res.nuevo_estado)
+                if (newState) {
+                  useGameStore.getState().setBossState(newState)
+                  useGameStore.getState().setBossAction(res.accion as BossAction)
+                }
+              }).catch((err) => {
+                console.error("[v0] Error en bossAction (near miss):", err)
+              })
+            }
+
+            // Tarea 3.3: Calcular daño al jefe
+            const currentBossHp = useGameStore.getState().bossHp
+            const bossLives = useGameStore.getState().bossLives
+            if (bossLives > 0) {
+              void combatHit({
+                hp_actual: currentBossHp,
+                dano_recibido: PLAYER_PROJECTILE_DAMAGE,
+              }).then((res) => {
+                useGameStore.getState().applyBossDamage(res.hp_resultante)
+              }).catch((err) => {
+                console.error("[v0] Error en combatHit (jefe):", err)
+              })
+            }
+          } else if (secretBossPresent) {
+            // Estímulo al MiniBoss
+            const curState = useGameStore.getState().miniBossState
+            if (curState !== "C") {
+              void bossAction({ estado_actual: curState, estimulo: "h" }).then((res) => {
+                const newState = parseBossState(res.nuevo_estado)
+                if (newState) {
+                  useGameStore.getState().setMiniBossState(newState)
+                  useGameStore.getState().setMiniBossAction(res.accion as never)
+                }
+              }).catch((err) => {
+                console.error("[v0] Error en bossAction (near miss MiniBoss):", err)
+              })
+            }
+
+            // Calcular daño al mini jefe con API de Turing
+            const currentMiniBossHp = useGameStore.getState().miniBossHp
+            if (currentMiniBossHp > 0 && currentNode) {
+              void combatHit({
+                hp_actual: currentMiniBossHp,
+                dano_recibido: PLAYER_PROJECTILE_DAMAGE,
+              }).then((res) => {
+                useGameStore.getState().applyMiniBossDamage(currentNode.id, res.hp_resultante)
+              }).catch((err) => {
+                console.error("[v0] Error en combatHit (mini-jefe):", err)
+              })
+            }
           }
           continue
         }
 
-        // Fase 4 (3.2): Near miss - proyectil que pasa muy cerca del jefe.
-        // Calculamos la distancia del centro del proyectil al centro del jefe.
-        // Solo disparamos el estímulo una vez por proyectil (flag triggeredNearMiss).
+        // Near miss check (Solo para el Jefe Principal de momento)
         let didTriggerNearMiss = p.triggeredNearMiss ?? false
         
-        if (!didTriggerNearMiss) {
+        if (!didTriggerNearMiss && targetPos && bossPresent) {
           const bossCenter = center(bossPos, bossSize)
           const projCenter: Vector2D = { x: nx, y: ny }
           const distToBoss = distance(projCenter, bossCenter)
@@ -963,7 +1099,7 @@ export function DungeonScene() {
 
     rafId = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(rafId)
-  }, [bossPresent])
+  }, [bossPresent, secretBossPresent])
 
   // ===========================================================================
   // Tarea 3.2 - Game loop del Jefe.
@@ -1006,9 +1142,8 @@ export function DungeonScene() {
   const lastBossShotAtRef = useRef<number>(0)
 
   useEffect(() => {
-    if (!bossPresent) {
-      // Salimos de la sala del jefe: limpiamos los proyectiles vivos
-      // (mismo razonamiento que para los del jugador en el effect anterior).
+    if (!bossPresent && !secretBossPresent) {
+      // Salimos de toda sala con enemigo: limpiamos proyectiles vivos.
       if (bossProyectilesRef.current.length > 0) setBossProyectiles([])
       patrolTargetRef.current = null
       lastBossShotAtRef.current = 0
@@ -1018,50 +1153,58 @@ export function DungeonScene() {
     let rafId = 0
     const tick = () => {
       const snap = useGameStore.getState()
-      const cur = bossPositionRef.current
+      const isMini = secretBossPresent
+      const cur = isMini ? miniBossPositionRef.current : bossPositionRef.current
+      const state = isMini ? snap.miniBossState : snap.bossState
+      const isAlive = isMini ? snap.miniBossHp > 0 : snap.bossLives > 0
+      const furious = isMini ? false : snap.isBossFurious
+      // El mini-boss se mueve a la mitad de velocidad del jefe principal.
+      const speedMult = isMini ? 0.5 : 1
 
-      // -------- 1) Movimiento del jefe segun el estado de Moore --------
       let nextBossPos: Vector2D = cur
+      let pendingSpawn: BossProjectileState | null = null
 
-      if (snap.bossState === "A") {
-        // Patrullaje. Si no tenemos objetivo o estamos cerca de el,
-        // elegimos un nuevo punto aleatorio dentro de un radio
-        // BOSS_PATROL_RADIUS, clampeado a los bordes del mundo.
-        const reached =
-          !patrolTargetRef.current ||
-          distance(cur, patrolTargetRef.current) <= BOSS_PATROL_REACHED_EPSILON
-        if (reached) {
-          const angle = Math.random() * Math.PI * 2
-          const radius = Math.random() * BOSS_PATROL_RADIUS
-          patrolTargetRef.current = {
-            x: clampX(cur.x + Math.cos(angle) * radius),
-            y: clampY(cur.y + Math.sin(angle) * radius),
+      if (isAlive) {
+        // -------- 1) Movimiento del jefe segun el estado de Moore --------
+        if (state === "A") {
+          // Patrullaje. Si no tenemos objetivo o estamos cerca de el,
+          // elegimos un nuevo punto aleatorio dentro de un radio
+          // BOSS_PATROL_RADIUS, clampeado a los bordes del mundo.
+          const reached =
+            !patrolTargetRef.current ||
+            distance(cur, patrolTargetRef.current) <= BOSS_PATROL_REACHED_EPSILON
+          if (reached) {
+            const angle = Math.random() * Math.PI * 2
+            const radius = Math.random() * BOSS_PATROL_RADIUS
+            patrolTargetRef.current = {
+              x: clampX(cur.x + Math.cos(angle) * radius),
+              y: clampY(cur.y + Math.sin(angle) * radius),
+            }
           }
-        }
-        nextBossPos = stepTowards(
-          cur,
-          patrolTargetRef.current!,
-          BOSS_PATROL_SPEED,
-        )
-      } else if (snap.bossState === "B") {
-        // Buscar: el jefe se queda quieto. El feedback visual de que
-        // "esta buscando" lo da el StateBadge del componente Boss
-        // (icono "!" amarillo + animate-pulse).
-        patrolTargetRef.current = null
-      } else {
-        // C - Atacar. Persigue al jugador hasta una distancia minima
-        // para no encimarse encima de el.
-        patrolTargetRef.current = null
-        const playerCenter = center(snap.playerPosition, PLAYER_SIZE)
-        const bossCenter = center(cur, BOSS_SIZE)
-        const distToPlayer = distance(bossCenter, playerCenter)
-        if (distToPlayer > BOSS_MIN_DISTANCE_TO_PLAYER) {
-          // Convertimos el target del centro a la esquina sup-izq.
-          const target: Vector2D = {
+          nextBossPos = stepTowards(
+            cur,
+            patrolTargetRef.current!,
+            BOSS_PATROL_SPEED * speedMult,
+          )
+        } else if (state === "B") {
+          // Buscar: el jefe se queda quieto. El feedback visual de que
+          // "esta buscando" lo da el StateBadge del componente Boss
+          // (icono "!" amarillo + animate-pulse).
+          patrolTargetRef.current = null
+        } else {
+          // C - Atacar. Persigue al jugador hasta una distancia minima
+          // para no encimarse encima de el.
+          patrolTargetRef.current = null
+          const playerCenter = center(snap.playerPosition, PLAYER_SIZE)
+          const bossCenter = center(cur, BOSS_SIZE)
+          const distToPlayer = distance(bossCenter, playerCenter)
+          if (distToPlayer > BOSS_MIN_DISTANCE_TO_PLAYER) {
+            // Convertimos el target del centro a la esquina sup-izq.
+            const target: Vector2D = {
             x: playerCenter.x - BOSS_SIZE.width / 2,
             y: playerCenter.y - BOSS_SIZE.height / 2,
           }
-          nextBossPos = stepTowards(cur, target, BOSS_ATTACK_SPEED)
+          nextBossPos = stepTowards(cur, target, BOSS_ATTACK_SPEED * speedMult)
         }
       }
 
@@ -1072,8 +1215,13 @@ export function DungeonScene() {
       }
 
       if (nextBossPos.x !== cur.x || nextBossPos.y !== cur.y) {
-        bossPositionRef.current = nextBossPos
-        setBossPosition(nextBossPos)
+        if (isMini) {
+          miniBossPositionRef.current = nextBossPos
+          setMiniBossPosition(nextBossPos)
+        } else {
+          bossPositionRef.current = nextBossPos
+          setBossPosition(nextBossPos)
+        }
       }
 
       // -------- 2) Ataque del jefe (solo en estado C) --------
@@ -1081,14 +1229,14 @@ export function DungeonScene() {
       // lo pasamos a stepBossProjectiles para hacer un solo setState
       // por frame (sino la segunda escritura "pisa" la primera).
       const now = performance.now()
-      let pendingSpawn: BossProjectileState | null = null
       if (
-        snap.bossState === "C" &&
+        state === "C" &&
         now - lastBossShotAtRef.current >= BOSS_SHOOT_COOLDOWN_MS
       ) {
         lastBossShotAtRef.current = now
-        pendingSpawn = buildBossShotAtPlayer(snap.isBossFurious)
+        pendingSpawn = buildBossShotAtPlayer(furious, cur)
       }
+    } // Fin if isAlive
 
       // -------- 3) Movimiento de los proyectiles del jefe + colisiones --------
       stepBossProjectiles(snap.playerPosition, pendingSpawn)
@@ -1131,12 +1279,13 @@ export function DungeonScene() {
     // No toca el state: solo devuelve el objeto (lo mete stepBossProjectiles).
     function buildBossShotAtPlayer(
       furious: boolean,
+      bossC_topleft: Vector2D
     ): BossProjectileState | null {
       const playerC = center(
         useGameStore.getState().playerPosition,
         PLAYER_SIZE,
       )
-      const bossC = center(bossPositionRef.current, BOSS_SIZE)
+      const bossC = center(bossC_topleft, BOSS_SIZE)
       const vx = playerC.x - bossC.x
       const vy = playerC.y - bossC.y
       const len = Math.sqrt(vx * vx + vy * vy)
@@ -1281,9 +1430,9 @@ export function DungeonScene() {
 
     rafId = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(rafId)
-    // bossPresent reinicia todo el sistema. NO ponemos bossState aqui:
-    // lo leemos via getState() en cada frame para no recrear el rAF.
-  }, [bossPresent])
+    // bossPresent / secretBossPresent reinicia todo el sistema.
+    // NO ponemos bossState aqui: lo leemos via getState() en cada frame.
+  }, [bossPresent, secretBossPresent])
 
   // ---------------------------------------------------------------------------
   // Debug toggle del Modo Furia.
@@ -1335,8 +1484,13 @@ export function DungeonScene() {
         )}
 
         {/* Jefe (solo en la sala con tipo "jefe" sin hijos) */}
-        {bossPresent && (
+        {bossPresent && bossLives > 0 && (
           <Boss position={bossPosition} size={BOSS_SIZE} state={bossState} />
+        )}
+
+        {/* Mini-Boss (solo en salas secretas) */}
+        {secretBossPresent && miniBossHp > 0 && (
+          <MiniBoss position={miniBossPosition} size={BOSS_SIZE} state={miniBossState} />
         )}
 
         {/* Proyectiles del JEFE (Tarea 3.2).
@@ -1389,11 +1543,27 @@ export function DungeonScene() {
           )
         })}
 
+        {/* Cofre Secreto (Aparece tras derrotar al mini-jefe) */}
+        {currentNode?.tipo === "sala" && currentNode.enemigo_derrotado && !currentNode.pociones_reclamadas && (
+          <GiOpenTreasureChest
+            className="absolute z-20 text-amber-300 drop-shadow-lg animate-pulse"
+            size={140}
+            style={{
+              left: WORLD_SIZE.width - 180,
+              top: 60,
+            }}
+            aria-hidden
+          />
+        )}
+
         {/* Jugador */}
         <Player position={playerPosition} size={PLAYER_SIZE} />
 
         {/* Tarea 3.3: Barra de vida del Jefe (solo en la sala del jefe) */}
-        {bossPresent && <BossHealthBar />}
+        {bossPresent && bossLives > 0 && <BossHealthBar />}
+
+        {/* Barra de vida del Mini-Boss (solo en salas secretas) */}
+        {secretBossPresent && miniBossHp > 0 && <MiniBossHealthBar />}
 
         {/* Tarea 3.3: Barra de vida del Jugador */}
         <PlayerHealthBar />

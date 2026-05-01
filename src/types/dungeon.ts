@@ -9,7 +9,11 @@ export type DungeonNode = {
   // IDs de los nodos hijos en el AST.
   conexiones: number[]
   // Ingrediente depositado en la sala (si lo hay)
-  ingredientes: ("A" | "B" | "C" | "D" | "E")[]
+  ingredientes: ("A" | "B" | "C" | "D" | "E" | null)[]
+  // Flag para indicar si el cofre de la sala secreta ya fue reclamado
+  pociones_reclamadas?: boolean
+  // Flag para indicar si el mini-boss de la sala secreta fue derrotado
+  enemigo_derrotado?: boolean
 }
 
 export type DungeonResponse = {
