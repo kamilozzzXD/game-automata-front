@@ -57,6 +57,9 @@ export function CraftingModal() {
   const addTrash = useGameStore((s) => s.addTrash)
   const pushNotification = useGameStore((s) => s.pushNotification)
 
+  const ingredientInventory = useGameStore((s) => s.ingredientInventory)
+  const consumeIngredient = useGameStore((s) => s.consumeIngredient)
+
   // Animacion temporal de exito / fracaso
   const [flash, setFlash] = useState<FlashKind>(null)
   const [lastPotionName, setLastPotionName] = useState<string | null>(null)
@@ -83,6 +86,12 @@ export function CraftingModal() {
 
   const handleAddIngredient = async (ingredient: Ingredient) => {
     if (isCrafting) return
+
+    // Validar y consumir ingrediente del inventario
+    if (!consumeIngredient(ingredient)) {
+      pushNotification({ kind: "error", message: "No tienes este ingrediente." })
+      return
+    }
 
     setIsCrafting(true)
     // Registramos visualmente el ingrediente que el jugador eligio
@@ -233,22 +242,30 @@ export function CraftingModal() {
             </p>
 
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {INGREDIENTS.map(({ id, Icon, color }) => (
-                <button
-                  key={id}
-                  onClick={() => handleAddIngredient(id)}
-                  disabled={isCrafting}
-                  className="group flex items-center gap-3 rounded-lg border border-border bg-secondary/30 px-3 py-2.5 text-left transition-all hover:border-primary/60 hover:bg-secondary/60 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <Icon
-                    className={`${color} transition-transform group-hover:scale-110`}
-                    size={28}
-                  />
-                  <p className="font-semibold text-foreground">
-                    {INGREDIENT_NAMES[id]}
-                  </p>
-                </button>
-              ))}
+              {INGREDIENTS.map(({ id, Icon, color }) => {
+                const count = ingredientInventory[id] ?? 0
+                return (
+                  <button
+                    key={id}
+                    onClick={() => handleAddIngredient(id)}
+                    disabled={isCrafting || count <= 0}
+                    className="group flex items-center gap-3 rounded-lg border border-border bg-secondary/30 px-3 py-2.5 text-left transition-all hover:border-primary/60 hover:bg-secondary/60 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Icon
+                      className={`${color} transition-transform group-hover:scale-110`}
+                      size={28}
+                    />
+                    <div className="flex flex-col">
+                      <p className="font-semibold text-foreground">
+                        {INGREDIENT_NAMES[id]}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground text-left">
+                        Disponibles: {count}
+                      </p>
+                    </div>
+                  </button>
+                )
+              })}
             </div>
 
             {isCrafting && (

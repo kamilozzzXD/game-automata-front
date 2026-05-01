@@ -1,11 +1,26 @@
+import { useEffect, useState } from "react"
 import {
   GiCrossedSwords,
-  GiCrownedSkull,
   GiNightSleep,
 } from "react-icons/gi"
 import { FaExclamation } from "react-icons/fa"
 import type { BossState } from "../../types/boss"
 import type { Size, Vector2D } from "../../types/game"
+import spritesheetUrl from "../../assets/boss-character-spritesheet.png"
+
+// ==========================================
+// CONFIGURACIÓN DEL SPRITESHEET DEL JEFE (LPC Universal)
+// ==========================================
+const SPRITE_WIDTH = 64
+const SPRITE_HEIGHT = 64
+
+// Mapeo de estados de la Máquina de Moore a filas/frames del spritesheet
+const ANIMATION_MAP: Record<BossState, { row: number; frames: number; speed: number }> = {
+  A: { row: 10, frames: 9, speed: 180 }, // Tranquilo: caminar lento hacia abajo (Fila 10)
+  B: { row: 10, frames: 9, speed: 90 },  // Alerta: caminar rápido (Fila 10)
+  C: { row: 2, frames: 7, speed: 80 },   // Ataque: conjuro rápido (Fila 2)
+}
+// ==========================================
 
 type Props = {
   position: Vector2D
@@ -29,6 +44,20 @@ type Props = {
  * controla la escena.
  */
 export function Boss({ position, size, state }: Props) {
+  const [frameIndex, setFrameIndex] = useState(0)
+
+  // Bucle de animación que depende del estado actual
+  useEffect(() => {
+    setFrameIndex(0) // Reiniciar al cambiar de estado
+    const { frames, speed } = ANIMATION_MAP[state]
+    const interval = setInterval(() => {
+      setFrameIndex((prev) => (prev + 1) % frames)
+    }, speed)
+    return () => clearInterval(interval)
+  }, [state])
+
+  const { row } = ANIMATION_MAP[state]
+
   return (
     <div
       className="pointer-events-none absolute z-20 flex flex-col items-center"
@@ -43,7 +72,7 @@ export function Boss({ position, size, state }: Props) {
       {/* Indicador flotante encima de la cabeza */}
       <StateBadge state={state} />
 
-      {/* Aura del jefe segun estado: pulsa mas fuerte cuando esta agresivo */}
+      {/* Aura del jefe segun estado */}
       <div
         className={`absolute inset-0 rounded-full ${
           state === "C"
@@ -55,24 +84,39 @@ export function Boss({ position, size, state }: Props) {
         aria-hidden
       />
 
-      {/* Cuerpo del jefe */}
+      {/* Cuerpo del jefe con el spritesheet */}
       <div
-        className={`relative flex items-center justify-center rounded-full ring-4 transition-colors ${
+        className={`relative flex items-center justify-center rounded-full ring-4 transition-colors overflow-hidden ${
           state === "C"
-            ? "bg-red-700 ring-red-400/70 shadow-[0_0_24px_rgba(220,38,38,0.7)]"
+            ? "bg-red-700/40 ring-red-400/70 shadow-[0_0_24px_rgba(220,38,38,0.7)]"
             : state === "B"
-              ? "bg-red-900 ring-amber-400/60 shadow-[0_0_18px_rgba(251,191,36,0.55)]"
-              : "bg-red-950 ring-slate-500/50 shadow-[0_0_14px_rgba(0,0,0,0.6)]"
+              ? "bg-red-900/40 ring-amber-400/60 shadow-[0_0_18px_rgba(251,191,36,0.55)]"
+              : "bg-red-950/40 ring-slate-500/50 shadow-[0_0_14px_rgba(0,0,0,0.6)]"
         }`}
         style={{
           width: size.width,
           height: size.height,
         }}
       >
-        <GiCrownedSkull
-          className="text-amber-200 drop-shadow"
-          size={Math.floor(size.width * 0.78)}
-        />
+        <div 
+          className="absolute overflow-visible"
+          style={{ width: "100%", height: "100%" }}
+        >
+          <div
+            className="absolute"
+            style={{
+              backgroundImage: `url(${spritesheetUrl})`,
+              backgroundRepeat: "no-repeat",
+              width: SPRITE_WIDTH,
+              height: SPRITE_HEIGHT,
+              backgroundPosition: `-${frameIndex * SPRITE_WIDTH}px -${row * SPRITE_HEIGHT}px`,
+              left: "50%",
+              top: "50%",
+              // Escalamos un poco para que llene bien su colisión
+              transform: `translate(-50%, -60%) scale(1.6)`,
+            }}
+          />
+        </div>
       </div>
     </div>
   )

@@ -8,6 +8,8 @@ export type DungeonNode = {
   tipo: DungeonNodeType
   // IDs de los nodos hijos en el AST.
   conexiones: number[]
+  // Ingrediente depositado en la sala (si lo hay)
+  ingredientes: ("A" | "B" | "C" | "D" | "E")[]
 }
 
 export type DungeonResponse = {

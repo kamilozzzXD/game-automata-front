@@ -10,11 +10,12 @@ import { Player } from "../components/game/Player"
 import { Portal } from "../components/game/Portal"
 import { Projectile } from "../components/game/Projectile"
 import { DungeonRoom } from "../components/game/DungeonRoom"
+import { IngredientItem } from "../components/game/IngredientItem"
 import { BossHealthBar } from "../components/ui/BossHealthBar"
 import { PlayerHealthBar } from "../components/ui/PlayerHealthBar"
 import { HUD } from "../components/ui/HUD"
 import { Notifications } from "../components/ui/Notifications"
-import { DUNGEON_NODE_NAMES, DUNGEON_NODE_DESCRIPTIONS, POTION_NAMES } from "../core/dictionary"
+import { DUNGEON_NODE_NAMES, DUNGEON_NODE_DESCRIPTIONS, POTION_NAMES, INGREDIENT_NAMES } from "../core/dictionary"
 import { useGameStore } from "../core/gameStore"
 import { center, distance, intersectsAABB, isWithinRadius } from "../core/geometry"
 import { useGameKeyboard } from "../hooks/useGameKeyboard"
@@ -28,6 +29,11 @@ import type { Interactable, PotionId, Size, Vector2D } from "../types/game"
 
 const WORLD_SIZE: Size = { width: 960, height: 600 }
 const PLAYER_SIZE: Size = { width: 48, height: 48 }
+
+function pseudoRandom(seed: number) {
+  const x = Math.sin(seed) * 10000;
+  return x - Math.floor(x);
+}
 
 // ---------------------------------------------------------------------------
 // Modelo de puertas: cada habitacion tiene hasta 4 (left/right/top/bottom).
@@ -169,6 +175,8 @@ const POTION_P5_HEAL = 50  // Poción de Curación Mayor
 // ---------------------------------------------------------------------------
 // Tarea 3.1 - Configuracion del sistema de combate del jugador.
 // ---------------------------------------------------------------------------
+// Tamano del ingrediente a recoger.
+const INGREDIENT_SIZE: Size = { width: 40, height: 40 }
 // Tamano del proyectil (cuadrado para AABB; visualmente es circular).
 const PROJECTILE_SIZE: Size = { width: 14, height: 14 }
 // Velocidad: pixeles avanzados por frame de rAF (a 60fps -> ~360 px/s).
@@ -327,6 +335,7 @@ export function DungeonScene() {
   const setIsGenerating = useGameStore((s) => s.setIsGeneratingDungeon)
   const setCurrentDungeon = useGameStore((s) => s.setCurrentDungeon)
   const pushNotification = useGameStore((s) => s.pushNotification)
+  const collectDungeonIngredients = useGameStore((s) => s.collectDungeonIngredients)
 
   // Sprint 4 - Estado del jefe (Maquina de Moore) e invisibilidad
   const bossState = useGameStore((s) => s.bossState)
@@ -355,6 +364,11 @@ export function DungeonScene() {
   // portal de salida (asi nunca colisiona con una puerta-hijo).
   useEffect(() => {
     if (!dungeon) return
+    // Si la salaActualId ya está seteada, significa que estamos navegando
+    // por la mazmorra y solo se ha actualizado el estado (ej. al recoger ingredientes).
+    // No queremos reiniciar la posición.
+    if (salaActualId !== null) return
+
     const start = dungeon.estructura_ast.find((n) => n.tipo === "inicio")
     if (!start) return
     const initial = new Map<number, RoomConfig>()
@@ -362,7 +376,7 @@ export function DungeonScene() {
     setRoomConfigs(initial)
     setSalaActualId(start.id)
     setPlayerPosition(CENTER_SPAWN)
-  }, [dungeon, setPlayerPosition])
+  }, [dungeon, salaActualId, setPlayerPosition])
 
   // Movimiento del jugador (mismo hook que el bosque).
   const movementEnabled = salaActualId !== null && !isGenerating
@@ -450,6 +464,46 @@ export function DungeonScene() {
         }, 80)
       }
     }
+
+    // 3) Recolección de Ingredientes (si la sala tiene).
+    if (currentNode.ingredientes && currentNode.ingredientes.length > 0) {
+      const remaining: (Ingredient | null)[] = [...currentNode.ingredientes]
+      const collected: Ingredient[] = []
+      
+      currentNode.ingredientes.forEach((ing, idx) => {
+        if (!ing) return
+        
+        const seedX = currentNode.id * 100 + idx
+        const seedY = currentNode.id * 100 + idx + 50
+        const x = 150 + pseudoRandom(seedX) * (WORLD_SIZE.width - 300)
+        const y = 150 + pseudoRandom(seedY) * (WORLD_SIZE.height - 300)
+        
+        const ingPos = { x, y }
+        if (intersectsAABB(playerPosition, PLAYER_SIZE, ingPos, INGREDIENT_SIZE)) {
+          collected.push(ing)
+          remaining[idx] = null
+        }
+      })
+      
+      if (collected.length > 0) {
+        collectDungeonIngredients(currentNode.id, collected, remaining)
+        
+        // Contar frecuencias para el mensaje
+        const counts = collected.reduce((acc, i) => {
+          acc[i] = (acc[i] || 0) + 1
+          return acc
+        }, {} as Partial<Record<Ingredient, number>>)
+        
+        const summary = Object.entries(counts)
+          .map(([k, v]) => `${INGREDIENT_NAMES[k as Ingredient]} x${v}`)
+          .join(", ")
+          
+        pushNotification({
+          kind: "info",
+          message: `Has recogido materiales: ${summary}`,
+        })
+      }
+    }
   }, [
     playerPosition,
     currentNode,
@@ -459,6 +513,8 @@ export function DungeonScene() {
     nodeMap,
     roomConfigs,
     setPlayerPosition,
+    collectDungeonIngredients,
+    pushNotification,
   ])
 
   // ---------- Salida unificada (portal en la sala inicial) ----------
@@ -507,6 +563,8 @@ export function DungeonScene() {
   async function regenerate() {
     if (isGenerating) return
     setIsGenerating(true)
+    // Forzamos el reset de salaActualId para que el useEffect de inicialización se ejecute
+    setSalaActualId(null)
     try {
       const res = await generateDungeon()
       setCurrentDungeon(res)
@@ -1189,13 +1247,9 @@ export function DungeonScene() {
               useGameStore.getState().setPlayerHealthFlash(true)
               // Game Over: si hp_resultante === 0, el jugador murió
               if (res.hp_resultante === 0) {
-                // Reseteamos al bosque con vida completa y posición de spawn
-                useGameStore.getState().setCurrentScene("forest")
-                useGameStore.getState().setPlayerPosition({ x: 230, y: 260 })
-                useGameStore.getState().setPlayerHp(100)
-                useGameStore.getState().setPlayerInvisible(false)
+                // La pantalla de muerte maneja el retorno.
+                // Limpiamos la IA del jefe para evitar daño residual mientras se ve la pantalla.
                 useGameStore.getState().resetBoss()
-                // Limpiamos proyectiles del jefe para evitar daño residual
                 setBossProyectiles([])
               }
             }).catch((err) => {
@@ -1315,6 +1369,25 @@ export function DungeonScene() {
             variant="player"
           />
         ))}
+
+        {/* Ingredientes esparcidos por la sala (si los hay) */}
+        {currentNode?.ingredientes && currentNode.ingredientes.map((ing, idx) => {
+          if (!ing) return null
+          
+          const seedX = currentNode.id * 100 + idx
+          const seedY = currentNode.id * 100 + idx + 50
+          const x = 150 + pseudoRandom(seedX) * (WORLD_SIZE.width - 300)
+          const y = 150 + pseudoRandom(seedY) * (WORLD_SIZE.height - 300)
+          
+          return (
+            <IngredientItem
+              key={`${currentNode.id}-${idx}`}
+              ingredient={ing}
+              position={{ x, y }}
+              size={INGREDIENT_SIZE}
+            />
+          )
+        })}
 
         {/* Jugador */}
         <Player position={playerPosition} size={PLAYER_SIZE} />

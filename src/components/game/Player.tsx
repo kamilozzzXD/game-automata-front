@@ -1,50 +1,78 @@
-import { GiWizardFace } from "react-icons/gi"
+import { useEffect, useState } from "react"
 import { useGameStore } from "../../core/gameStore"
 import type { Size, Vector2D } from "../../types/game"
+import spritesheetUrl from "../../assets/character-spritesheet.png"
 
 type Props = {
   position: Vector2D
   size: Size
 }
 
+// ==========================================
+// CONFIGURACIÓN DEL SPRITESHEET (LPC Universal)
+// ==========================================
+// Los spritesheets de LPC tienen frames de 64x64
+const SPRITE_WIDTH = 64 
+const SPRITE_HEIGHT = 64 
+
+// La animación de caminar tiene 9 frames
+const WALK_FRAMES = 9 
+
+// Velocidad en ms de cada frame (menor = más rápido)
+const ANIMATION_SPEED_MS = 80 
+
+// El estándar LPC usa estas filas para caminar:
+const ROW_MAP = {
+  up: 8,
+  left: 9,
+  down: 10,
+  right: 11,
+}
+// ==========================================
+
 /**
- * Avatar del jugador. Posicionamiento absoluto controlado por el padre
- * (la escena), usando coordenadas X/Y del estado de React.
- *
- * Sprint 4: cuando la Pocion de Invisibilidad esta activa, bajamos la
- * opacidad para que el jugador "se note translucido". Mantenemos el
- * color original del sprite (no lo tinetamos) para que sea claro que
- * el efecto es temporal y no un cambio de personaje.
- *
- * Tarea 3.1 - Sistema de orientacion:
- *   - Lee `lastDirection` y `isPlayerMoving` del store global.
- *   - Renderiza un pequeno triangulo CSS que orbita al jugador
- *     apuntando hacia la direccion en la que esta caminando.
- *   - Solo es visible cuando el jugador se esta moviendo (cuando esta
- *     quieto el indicador se oculta, pero la direccion se conserva
- *     internamente para que el disparo sepa hacia donde apuntar).
+ * Avatar del jugador animado con spritesheet.
  */
 export function Player({ position, size }: Props) {
   const isInvisible = useGameStore((s) => s.isPlayerInvisible)
   const lastDirection = useGameStore((s) => s.lastDirection)
   const isMoving = useGameStore((s) => s.isPlayerMoving)
 
-  // Math.atan2(dy, dx) -> radianes en el rango (-PI, PI].
-  // Multiplicamos por 180/PI para llevarlo a grados (CSS rotate).
-  // En CSS:  0deg = derecha, 90deg = abajo, 180deg = izquierda, -90deg = arriba.
-  // Ese mapping ya coincide con el resultado de atan2 en nuestro sistema
-  // de coordenadas (Y crece hacia abajo en la pantalla), asi que NO hay
-  // que sumar offsets adicionales para alinear el indicador.
+  // Estado para la animación (índice actual del cuadro)
+  const [frameIndex, setFrameIndex] = useState(0)
+
+  // Calcular la dirección cardinal dominante para la animación
+  let currentDir: keyof typeof ROW_MAP = "down"
+  if (Math.abs(lastDirection.x) > Math.abs(lastDirection.y)) {
+    currentDir = lastDirection.x > 0 ? "right" : "left"
+  } else {
+    currentDir = lastDirection.y < 0 ? "up" : "down"
+  }
+  const row = ROW_MAP[currentDir]
+
+  // Bucle de animación
+  useEffect(() => {
+    if (!isMoving) {
+      setFrameIndex(0) // Frame de reposo (idle)
+      return
+    }
+
+    const interval = setInterval(() => {
+      setFrameIndex((prev) => (prev + 1) % WALK_FRAMES)
+    }, ANIMATION_SPEED_MS)
+
+    return () => clearInterval(interval)
+  }, [isMoving])
+
+  // Indicador orbital (Tarea 3.1)
   const angleDeg =
     (Math.atan2(lastDirection.y, lastDirection.x) * 180) / Math.PI
-
-  // Radio en pixeles desde el centro del jugador hasta el indicador.
   const orbitRadius = size.width / 2 + 10
 
   return (
     <div
-      className={`absolute z-20 flex items-center justify-center rounded-full bg-primary/90 ring-4 ring-primary/40 shadow-lg shadow-primary/30 transition-opacity duration-300 ${
-        isInvisible ? "ring-cyan-400/40 shadow-cyan-300/40" : ""
+      className={`absolute z-20 flex items-center justify-center rounded-full transition-opacity duration-300 ${
+        isInvisible ? "ring-4 ring-cyan-400/40 shadow-lg shadow-cyan-300/40" : ""
       }`}
       style={{
         left: position.x,
@@ -55,13 +83,30 @@ export function Player({ position, size }: Props) {
       }}
       aria-label={isInvisible ? "Jugador (invisible)" : "Jugador"}
     >
-      <GiWizardFace className="text-background" size={Math.floor(size.width * 0.7)} />
+      {/* Contenedor del Spritesheet */}
+      <div 
+        className="absolute overflow-visible"
+        style={{ width: "100%", height: "100%" }}
+      >
+        <div
+          className="absolute"
+          style={{
+            backgroundImage: `url(${spritesheetUrl})`,
+            backgroundRepeat: "no-repeat",
+            width: SPRITE_WIDTH,
+            height: SPRITE_HEIGHT,
+            // Recorremos la grilla desplazando la imagen de fondo
+            backgroundPosition: `-${frameIndex * SPRITE_WIDTH}px -${row * SPRITE_HEIGHT}px`,
+            // Centramos el sprite de 64x64 sobre la colisión de 48x48
+            left: "50%",
+            top: "50%",
+            // El sprite LPC suele tener mucho espacio transparente, lo escalamos un poco para que el personaje se vea bien
+            transform: `translate(-50%, -60%) scale(1.5)`,
+          }}
+        />
+      </div>
 
-      {/* Indicador de apuntado (Tarea 3.1).
-          Wrapper centrado en el jugador. El triangulo interno apunta a
-          la DERECHA por defecto (forma CSS), por lo que basta con rotar
-          el wrapper por `angleDeg` para que apunte a la direccion real.
-          La punta queda a `orbitRadius` pixeles del centro. */}
+      {/* Indicador de apuntado */}
       <div
         className="pointer-events-none absolute left-1/2 top-1/2 transition-opacity duration-150"
         style={{
@@ -72,10 +117,6 @@ export function Player({ position, size }: Props) {
         }}
         aria-hidden
       >
-        {/* Triangulo CSS apuntando a la derecha:
-            usa bordes transparentes en top/bottom y un borde solido en
-            left para formar la punta. La forma se posiciona offset hacia
-            la derecha con `left: orbitRadius - 6`. */}
         <span
           className="absolute drop-shadow-[0_0_4px_rgba(255,255,255,0.7)]"
           style={{
