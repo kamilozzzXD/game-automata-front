@@ -2,6 +2,7 @@ import { useGameStore } from "./core/gameStore"
 import { DungeonScene } from "./scenes/DungeonScene"
 import { ForestScene } from "./scenes/ForestScene"
 import { DeathScreen } from "./components/ui/DeathScreen"
+import { VictoryScreen } from "./components/ui/VictoryScreen"
 
 function App() {
   // Router de escenas. Mantener al jugador en el mismo store hace que el
@@ -12,6 +13,7 @@ function App() {
     <>
       {currentScene === "dungeon" ? <DungeonScene /> : <ForestScene />}
       <DeathScreen />
+      <VictoryScreen />
     </>
   )
 }

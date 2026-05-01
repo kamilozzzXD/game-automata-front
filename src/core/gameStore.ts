@@ -78,8 +78,9 @@ type GameStore = {
   trashCount: number
   addPotion: (id: PotionId) => void
   addTrash: () => void
-  // Acciones para ingredientes
+  // Acciones para ingredientes y secretos
   collectDungeonIngredients: (nodeId: number, collected: Ingredient[], remaining: (Ingredient | null)[]) => void
+  claimSecretRoomPotions: (nodeId: number, potions: PotionId[]) => void
   consumeIngredient: (ingredient: Ingredient) => boolean
 
   // ----- Notificaciones -----
@@ -130,6 +131,12 @@ type GameStore = {
   // Reset completo de la IA del jefe (al entrar a la guarida).
   resetBoss: () => void
 
+  // ----- Mini-Boss / IA (Salas Secretas) -----
+  miniBossState: BossState
+  setMiniBossState: (s: BossState) => void
+  miniBossAction: BossAction
+  setMiniBossAction: (a: BossAction) => void
+
   // ----- Modo Furia del Jefe (Tarea 3.2 - Fase 2) -----
   //
   // Flag global. Cuando es true, la logica de disparo del jefe en estado C
@@ -176,6 +183,11 @@ type GameStore = {
   applyBossDamage: (newHp: number) => void
   // Reset completo de la vida del jefe (al entrar a una sala del jefe nueva).
   resetBossHealth: () => void
+
+  // Vida del Mini-Boss (Sala Secreta): una sola barra de 50 HP.
+  miniBossHp: number
+  applyMiniBossDamage: (nodeId: number, newHp: number) => void
+  resetMiniBoss: () => void
 
   // Flag para feedback visual: hace parpadear la barra del jefe brevemente.
   bossHealthFlash: boolean
@@ -238,6 +250,24 @@ export const useGameStore = create<GameStore>((set) => ({
       
       return {
         ingredientInventory: nextInv,
+        currentDungeon: {
+          ...state.currentDungeon,
+          estructura_ast: newAst,
+        },
+      }
+    }),
+  claimSecretRoomPotions: (nodeId, potions) =>
+    set((state) => {
+      if (!state.currentDungeon) return {}
+      const newAst = state.currentDungeon.estructura_ast.map((n) =>
+        n.id === nodeId ? { ...n, pociones_reclamadas: true } : n
+      )
+      const nextInv = { ...state.inventory }
+      for (const p of potions) {
+        nextInv[p] = (nextInv[p] ?? 0) + 1
+      }
+      return {
+        inventory: nextInv,
         currentDungeon: {
           ...state.currentDungeon,
           estructura_ast: newAst,
@@ -324,6 +354,12 @@ export const useGameStore = create<GameStore>((set) => ({
   setBossState: (s) => set({ bossState: s }),
   bossAction: "Patrullar",
   setBossAction: (a) => set({ bossAction: a }),
+
+  // Mini-Boss State
+  miniBossState: "A",
+  setMiniBossState: (s) => set({ miniBossState: s }),
+  miniBossAction: "Patrullar",
+  setMiniBossAction: (a) => set({ miniBossAction: a }),
   isBossThinking: false,
   setIsBossThinking: (b) => set({ isBossThinking: b }),
   resetBoss: () =>
@@ -394,6 +430,32 @@ export const useGameStore = create<GameStore>((set) => ({
       bossHp: 100,
       bossLives: 2,
       bossHealthFlash: false,
+    }),
+
+  miniBossHp: 50,
+  applyMiniBossDamage: (nodeId, newHp) =>
+    set((state) => {
+      // Si el HP llega a 0, actualizar el nodo y marcarlo como derrotado
+      if (newHp === 0 && state.currentDungeon) {
+        const newAst = state.currentDungeon.estructura_ast.map((n) =>
+          n.id === nodeId ? { ...n, enemigo_derrotado: true } : n
+        )
+        return {
+          miniBossHp: 0,
+          currentDungeon: {
+            ...state.currentDungeon,
+            estructura_ast: newAst,
+          },
+          bossHealthFlash: true,
+        }
+      }
+      return { miniBossHp: newHp, bossHealthFlash: true }
+    }),
+  resetMiniBoss: () =>
+    set({
+      miniBossState: "A",
+      miniBossAction: "Patrullar",
+      miniBossHp: 50,
     }),
 
   // Feedback visual
