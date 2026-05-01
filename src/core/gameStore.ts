@@ -195,6 +195,20 @@ type GameStore = {
   // Flag para feedback visual: hace parpadear la barra del jugador brevemente.
   playerHealthFlash: boolean
   setPlayerHealthFlash: (b: boolean) => void
+
+  // ----- Efectos activos de pociones -----
+  isPotionAimActive: boolean       // P2: daño x1.5
+  setIsPotionAimActive: (b: boolean) => void
+  isSpeedActive: boolean           // P6: velocidad x1.6
+  setIsSpeedActive: (b: boolean) => void
+  isMultiShotActive: boolean       // P7: triple disparo
+  setIsMultiShotActive: (b: boolean) => void
+  isHyperReflexesActive: boolean   // P8: cooldown de disparo /2
+  setIsHyperReflexesActive: (b: boolean) => void
+  isShieldActive: boolean          // P9: invencibilidad temporal
+  setIsShieldActive: (b: boolean) => void
+  isExtremeCadenceActive: boolean  // P10: cooldown disparo ~0
+  setIsExtremeCadenceActive: (b: boolean) => void
 }
 
 let notificationCounter = 0
@@ -227,8 +241,11 @@ export const useGameStore = create<GameStore>((set) => ({
   setIsCrafting: (b) => set({ isCrafting: b }),
   clearTrail: () => set({ ingredientHistory: [] }),
 
-  // Inventario
-  inventory: {},
+  // Inventario (Modo Debug: 20 de cada una)
+  inventory: {
+    P1: 20, P2: 20, P3: 20, P4: 20, P5: 20,
+    P6: 20, P7: 20, P8: 20, P9: 20, P10: 20,
+  },
   ingredientInventory: {},
   trashCount: 0,
   addPotion: (id) =>
@@ -463,4 +480,18 @@ export const useGameStore = create<GameStore>((set) => ({
   setBossHealthFlash: (b) => set({ bossHealthFlash: b }),
   playerHealthFlash: false,
   setPlayerHealthFlash: (b) => set({ playerHealthFlash: b }),
+
+  // Efectos activos de pociones
+  isPotionAimActive: false,
+  setIsPotionAimActive: (b) => set({ isPotionAimActive: b }),
+  isSpeedActive: false,
+  setIsSpeedActive: (b) => set({ isSpeedActive: b }),
+  isMultiShotActive: false,
+  setIsMultiShotActive: (b) => set({ isMultiShotActive: b }),
+  isHyperReflexesActive: false,
+  setIsHyperReflexesActive: (b) => set({ isHyperReflexesActive: b }),
+  isShieldActive: false,
+  setIsShieldActive: (b) => set({ isShieldActive: b }),
+  isExtremeCadenceActive: false,
+  setIsExtremeCadenceActive: (b) => set({ isExtremeCadenceActive: b }),
 }))

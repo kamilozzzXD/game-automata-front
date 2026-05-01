@@ -20,6 +20,7 @@ import {
 } from "../../core/dictionary"
 import { craft } from "../../services/api"
 import type { Ingredient, PotionId } from "../../types/game"
+import guiaImg from "../../assets/guia.png"
 
 type IngredientButton = {
   id: Ingredient
@@ -152,7 +153,7 @@ export function CraftingModal() {
       aria-modal="true"
       aria-labelledby="crafting-title"
     >
-      <div className="relative w-full max-w-2xl rounded-2xl border border-primary/30 bg-card text-card-foreground shadow-2xl shadow-primary/10">
+      <div className="relative w-full max-w-5xl rounded-2xl border border-primary/30 bg-card text-card-foreground shadow-2xl shadow-primary/10">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border/60 px-6 py-4">
           <div className="flex items-center gap-3">
@@ -169,8 +170,8 @@ export function CraftingModal() {
           </button>
         </div>
 
-        {/* Body */}
-        <div className="grid gap-6 p-6 md:grid-cols-2">
+        {/* Body: 3 columnas – Caldero | Ingredientes | Guía */}
+        <div className="grid gap-6 p-6 md:grid-cols-[1fr_1fr_auto]">
           {/* Caldero / estado visual */}
           <div className="flex flex-col items-center justify-center gap-4 rounded-xl bg-muted/40 p-6">
             <div
@@ -273,6 +274,18 @@ export function CraftingModal() {
                 La mezcla reacciona...
               </p>
             )}
+          </div>
+
+          {/* Guía de recetas (imagen) */}
+          <div className="flex flex-col items-center gap-2 rounded-xl bg-muted/40 p-3">
+            <p className="text-xs uppercase tracking-wider text-muted-foreground">
+              Guía de Recetas
+            </p>
+            <img
+              src={guiaImg}
+              alt="Guía de recetas de pociones"
+              className="max-h-[420px] w-auto rounded-lg border border-border/40 object-contain shadow-md"
+            />
           </div>
         </div>
       </div>
