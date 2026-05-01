@@ -174,6 +174,17 @@ const INVISIBILITY_MS = 6000
 // Tarea 3.3: curación de las pociones P1 y P5.
 const POTION_P1_HEAL = 25  // Poción Menor de Curación
 const POTION_P5_HEAL = 50  // Poción de Curación Mayor
+// Duraciones de los efectos de cada poción activa (ms).
+const POTION_AIM_MS = 8000       // P2: Aceite de Puntería
+const POTION_SPEED_MS = 6000     // P6: Velocidad de Movimiento
+const POTION_MULTISHOT_MS = 8000 // P7: Suero de Disparo Múltiple
+const POTION_REFLEX_MS = 8000    // P8: Tónico de Hiper-Reflejos
+const POTION_SHIELD_MS = 5000    // P9: Escudo de Energía
+const POTION_CADENCE_MS = 5000   // P10: Brebaje de Cadencia Extrema
+// Factor de aumento de daño con Aceite de Puntería.
+const AIM_POTION_DAMAGE_MULT = 1.5
+// Multiplicador de velocidad de movimiento con P6.
+export const SPEED_POTION_MULT = 1.6
 
 // ---------------------------------------------------------------------------
 // Tarea 3.1 - Configuracion del sistema de combate del jugador.
@@ -826,53 +837,112 @@ export function DungeonScene() {
   // -------------------------------------------------------------------------
   const healPlayer = useGameStore((s) => s.healPlayer)
 
+  // Pociones - flags de efectos activos
+  const setIsPotionAimActive = useGameStore((s) => s.setIsPotionAimActive)
+  const setIsSpeedActive = useGameStore((s) => s.setIsSpeedActive)
+  const setIsMultiShotActive = useGameStore((s) => s.setIsMultiShotActive)
+  const setIsHyperReflexesActive = useGameStore((s) => s.setIsHyperReflexesActive)
+  const setIsShieldActive = useGameStore((s) => s.setIsShieldActive)
+  const setIsExtremeCadenceActive = useGameStore((s) => s.setIsExtremeCadenceActive)
+
   const onUsePotion = useCallback(
     (id: PotionId) => {
-      // Tarea 3.3: Pociones de curación
+      // P1: Curación Menor
       if (id === "P1") {
         healPlayer(POTION_P1_HEAL)
-        pushNotification({
-          kind: "success",
-          message: `Bebes la Pocion Menor de Curacion. +${POTION_P1_HEAL} HP.`,
-        })
+        pushNotification({ kind: "success", message: `Bebes la Pocion Menor de Curacion. +${POTION_P1_HEAL} HP.` })
         return
       }
+      // P5: Curación Mayor
       if (id === "P5") {
         healPlayer(POTION_P5_HEAL)
-        pushNotification({
-          kind: "success",
-          message: `Bebes la Pocion de Curacion Mayor. +${POTION_P5_HEAL} HP.`,
-        })
+        pushNotification({ kind: "success", message: `Bebes la Pocion de Curacion Mayor. +${POTION_P5_HEAL} HP.` })
         return
       }
-
       // P4: Invisibilidad
       if (id === "P4") {
-        // Activar invisibilidad por INVISIBILITY_MS. Si ya estaba activa,
-        // refrescamos la duracion (el jugador tiende a "stackear" pociones).
         setPlayerInvisible(true)
         window.setTimeout(() => setPlayerInvisible(false), INVISIBILITY_MS)
-        pushNotification({
-          kind: "success",
-          message: "Bebes la Pocion de Invisibilidad. Te vuelves translucido.",
-        })
-
-        // Si estamos en la sala del jefe y el jefe ya nos detecto,
-        // mandamos "p" inmediatamente: en Moore, p => C->B, B->A, A->A.
+        pushNotification({ kind: "success", message: "Bebes la Pocion de Invisibilidad. Te vuelves translucido." })
         const cur = useGameStore.getState().bossState
-        if (bossPresent && (cur === "B" || cur === "C")) {
-          void sendBossStimulus("p", cur)
+        if (bossPresent && (cur === "B" || cur === "C")) void sendBossStimulus("p", cur)
+        return
+      }
+      // P2: Aceite de Punteria
+      if (id === "P2") {
+        setIsPotionAimActive(true)
+        window.setTimeout(() => setIsPotionAimActive(false), POTION_AIM_MS)
+        pushNotification({ kind: "success", message: `Aceite de Punteria activo (${POTION_AIM_MS / 1000}s). Dano x${AIM_POTION_DAMAGE_MULT}.` })
+        return
+      }
+      // P3: Mezcla Volátil - ráfaga explosiva en 8 direcciones
+      if (id === "P3") {
+        const snap = useGameStore.getState()
+        if (!bossPresent && !secretBossPresent) {
+          pushNotification({ kind: "info", message: "No hay enemigos cerca para usar la Mezcla Volatil." })
+          return
         }
+        const pCenter = center(snap.playerPosition, PLAYER_SIZE)
+        const dirs = [
+          {dx:0,dy:-1},{dx:0,dy:1},{dx:1,dy:0},{dx:-1,dy:0},
+          {dx:0.707,dy:-0.707},{dx:-0.707,dy:-0.707},{dx:0.707,dy:0.707},{dx:-0.707,dy:0.707}
+        ]
+        setProyectiles((prev) => [
+          ...prev,
+          ...dirs.map((d, i) => ({
+            id: Date.now() + i,
+            x: pCenter.x, y: pCenter.y,
+            dx: d.dx, dy: d.dy,
+            distanciaRecorrida: 0,
+          }))
+        ])
+        pushNotification({ kind: "success", message: "¡BOOM! La Mezcla Volatil explota en 8 direcciones." })
+        return
+      }
+      // P6: Velocidad de Movimiento
+      if (id === "P6") {
+        setIsSpeedActive(true)
+        window.setTimeout(() => setIsSpeedActive(false), POTION_SPEED_MS)
+        pushNotification({ kind: "success", message: `Velocidad aumentada (${POTION_SPEED_MS / 1000}s). ¡Esquiva mejor!` })
+        return
+      }
+      // P7: Suero de Disparo Múltiple
+      if (id === "P7") {
+        setIsMultiShotActive(true)
+        window.setTimeout(() => setIsMultiShotActive(false), POTION_MULTISHOT_MS)
+        pushNotification({ kind: "success", message: `Disparo multiple activo (${POTION_MULTISHOT_MS / 1000}s). Triple proyectil.` })
+        return
+      }
+      // P8: Tónico de Hiper-Reflejos
+      if (id === "P8") {
+        setIsHyperReflexesActive(true)
+        window.setTimeout(() => setIsHyperReflexesActive(false), POTION_REFLEX_MS)
+        pushNotification({ kind: "success", message: `Hiper-Reflejos activos (${POTION_REFLEX_MS / 1000}s). Cooldown de disparo reducido.` })
+        return
+      }
+      // P9: Escudo de Energía
+      if (id === "P9") {
+        setIsShieldActive(true)
+        window.setTimeout(() => setIsShieldActive(false), POTION_SHIELD_MS)
+        pushNotification({ kind: "success", message: `¡Escudo de Energia activo (${POTION_SHIELD_MS / 1000}s)! Eres invencible.` })
+        return
+      }
+      // P10: Brebaje de Cadencia Extrema
+      if (id === "P10") {
+        setIsExtremeCadenceActive(true)
+        window.setTimeout(() => setIsExtremeCadenceActive(false), POTION_CADENCE_MS)
+        pushNotification({ kind: "success", message: `Cadencia Extrema (${POTION_CADENCE_MS / 1000}s). ¡Dispara sin parar!` })
         return
       }
 
-      // Otras pociones sin efecto programado todavia
-      pushNotification({
-        kind: "info",
-        message: `Has usado: ${POTION_NAMES[id]} (sin efecto activo aun).`,
-      })
+      // Fallback
+      pushNotification({ kind: "info", message: `Has usado: ${POTION_NAMES[id]}.` })
     },
-    [bossPresent, healPlayer, pushNotification, sendBossStimulus, setPlayerInvisible],
+    [
+      bossPresent, secretBossPresent, healPlayer, pushNotification, sendBossStimulus,
+      setPlayerInvisible, setIsPotionAimActive, setIsSpeedActive, setIsMultiShotActive,
+      setIsHyperReflexesActive, setIsShieldActive, setIsExtremeCadenceActive,
+    ],
   )
 
   // Hotbar (Sprint 4): activo siempre que el jugador pueda jugar.
@@ -914,25 +984,55 @@ export function DungeonScene() {
       if (e.key.toLowerCase() !== "j") return
       e.preventDefault()
       const now = performance.now()
-      if (now - lastShotAtRef.current < SHOOT_COOLDOWN_MS) return
-      lastShotAtRef.current = now
 
       const snap = useGameStore.getState()
       const dir = snap.lastDirection
       // Defensa: si por algun motivo el vector es (0,0), no disparamos.
       if (dir.x === 0 && dir.y === 0) return
 
+      // P8/P10: cooldown efectivo segun pociones activas.
+      const effectiveCooldown = snap.isExtremeCadenceActive
+        ? 0
+        : snap.isHyperReflexesActive
+          ? SHOOT_COOLDOWN_MS / 2
+          : SHOOT_COOLDOWN_MS
+
+      if (now - lastShotAtRef.current < effectiveCooldown) return
+      lastShotAtRef.current = now
+
       const playerCenter = center(snap.playerPosition, PLAYER_SIZE)
-      projectileIdRef.current += 1
-      const nuevo: ProjectileState = {
-        id: projectileIdRef.current,
-        x: playerCenter.x,
-        y: playerCenter.y,
-        dx: dir.x,
-        dy: dir.y,
-        distanciaRecorrida: 0,
+
+      if (snap.isMultiShotActive) {
+        // P7: triple disparo con ligera apertura angular.
+        const angle = Math.atan2(dir.y, dir.x)
+        const spread = Math.PI / 10 // 18 grados de apertura
+        const offsets = [-spread, 0, spread]
+        setProyectiles((prev) => [
+          ...prev,
+          ...offsets.map((off) => {
+            projectileIdRef.current += 1
+            return {
+              id: projectileIdRef.current,
+              x: playerCenter.x,
+              y: playerCenter.y,
+              dx: Math.cos(angle + off),
+              dy: Math.sin(angle + off),
+              distanciaRecorrida: 0,
+            }
+          }),
+        ])
+      } else {
+        projectileIdRef.current += 1
+        const nuevo: ProjectileState = {
+          id: projectileIdRef.current,
+          x: playerCenter.x,
+          y: playerCenter.y,
+          dx: dir.x,
+          dy: dir.y,
+          distanciaRecorrida: 0,
+        }
+        setProyectiles((prev) => [...prev, nuevo])
       }
-      setProyectiles((prev) => [...prev, nuevo])
     }
 
     window.addEventListener("keydown", handler)
@@ -1009,13 +1109,14 @@ export function DungeonScene() {
               })
             }
 
-            // Tarea 3.3: Calcular daño al jefe
+            // Tarea 3.3: Calcular daño al jefe (P2: Aceite de Puntería aplica x1.5)
             const currentBossHp = useGameStore.getState().bossHp
             const bossLives = useGameStore.getState().bossLives
             if (bossLives > 0) {
+              const aimMult = useGameStore.getState().isPotionAimActive ? AIM_POTION_DAMAGE_MULT : 1
               void combatHit({
                 hp_actual: currentBossHp,
-                dano_recibido: PLAYER_PROJECTILE_DAMAGE,
+                dano_recibido: Math.round(PLAYER_PROJECTILE_DAMAGE * aimMult),
               }).then((res) => {
                 useGameStore.getState().applyBossDamage(res.hp_resultante)
               }).catch((err) => {
@@ -1037,12 +1138,13 @@ export function DungeonScene() {
               })
             }
 
-            // Calcular daño al mini jefe con API de Turing
+            // Calcular daño al mini jefe con API de Turing (P2: x1.5 si activo)
             const currentMiniBossHp = useGameStore.getState().miniBossHp
             if (currentMiniBossHp > 0 && currentNode) {
+              const aimMult = useGameStore.getState().isPotionAimActive ? AIM_POTION_DAMAGE_MULT : 1
               void combatHit({
                 hp_actual: currentMiniBossHp,
-                dano_recibido: PLAYER_PROJECTILE_DAMAGE,
+                dano_recibido: Math.round(PLAYER_PROJECTILE_DAMAGE * aimMult),
               }).then((res) => {
                 useGameStore.getState().applyMiniBossDamage(currentNode.id, res.hp_resultante)
               }).catch((err) => {
@@ -1380,6 +1482,10 @@ export function DungeonScene() {
           y: ny - projSize.height / 2,
         }
         if (intersectsAABB(projPos, projSize, playerPos, PLAYER_SIZE)) {
+          // P9: Escudo de Energía - invencibilidad temporal, ignora el impacto
+          const isShielded = useGameStore.getState().isShieldActive
+          if (isShielded) continue
+
           // Refactor 3.1: El daño al jugador también pasa por la Máquina de
           // Turing del backend para mantener consistencia académica.
           const damage = p.kind === "heavy"

@@ -97,8 +97,8 @@ export function usePlayerMovement({
           useGameStore.getState().setIsPlayerMoving(true)
         }
 
-        const nextX = posRef.current.x + dx * speed * dt
-        const nextY = posRef.current.y + dy * speed * dt
+        const nextX = posRef.current.x + dx * speed * (useGameStore.getState().isSpeedActive ? 1.6 : 1) * dt
+        const nextY = posRef.current.y + dy * speed * (useGameStore.getState().isSpeedActive ? 1.6 : 1) * dt
 
         // Clamp dentro del mundo (la posicion es la ESQUINA superior-izquierda)
         const clampedX = Math.max(0, Math.min(worldSize.width - playerSize.width, nextX))

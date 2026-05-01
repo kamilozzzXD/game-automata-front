@@ -94,18 +94,6 @@ export function PotionHotbar() {
           </button>
         )
       })}
-
-      {/* Indicador "INVISIBLE ACTIVO" cuando aplica.
-          Tambien es una tarjeta flotante: solo se muestra si el efecto
-          esta activo, asi que no compite por espacio en pantalla. */}
-      {isInvisible && (
-        <div
-          className="rounded-md border border-cyan-400/60 bg-cyan-400/10 px-2 py-1 text-center text-[10px] font-bold uppercase tracking-wider text-cyan-300 shadow-lg animate-pulse"
-          aria-live="polite"
-        >
-          Invisible
-        </div>
-      )}
     </aside>
   )
 }

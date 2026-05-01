@@ -4,6 +4,7 @@ import { useGameStore } from "../../core/gameStore"
 import { POTION_COLORS, POTION_NAMES, INGREDIENT_NAMES } from "../../core/dictionary"
 import type { PotionId, Ingredient } from "../../types/game"
 import { PotionHotbar } from "./PotionHotbar"
+import { ActiveEffects } from "./ActiveEffects"
 
 const INGREDIENTS_UI: { id: Ingredient; Icon: React.ElementType; color: string }[] = [
   { id: "A", Icon: GiWaterDrop, color: "text-sky-300" },
@@ -265,6 +266,9 @@ export function HUD() {
           <kbd className="rounded bg-muted px-1 text-foreground">J</kbd> disparar
         </p>
       </div>
+
+      {/* Panel de efectos activos (esquina inferior-derecha) */}
+      <ActiveEffects />
     </>
   )
 }

@@ -13,16 +13,16 @@ export const INGREDIENT_NAMES: Record<Ingredient, string> = {
 }
 
 export const POTION_NAMES: Record<PotionId | "P_basura", string> = {
-  P1: "Pocion Menor de Curacion",
-  P2: "Agua Purificada",
-  P3: "Fuego Liquido",
-  P4: "Pocion de Invisibilidad",
-  P5: "Pocion de Curacion Mayor",
-  P6: "Pocion de Regeneracion",
-  P7: "Pocion de Mana Mayor",
-  P8: "Pocion de Vision Nocturna",
-  P9: "Pocion de Resistencia al Fuego",
-  P10: "Pocion de Gravedad",
+  P1: "Poción Menor de Curación", //Recupera +25 HP de vida.
+  P2: "Aceite de Puntería", //Aumenta el daño de los proyectiles en 50% (x1.5).
+  P3: "Mezcla Volátil", //Dispara una ráfaga explosiva de 8 proyectiles en todas las direcciones.
+  P4: "Poción de Invisibilidad", //Los enemigos pierden tu rastro y dejan de atacarte.
+  P5: "Poción de Curación Mayor", //Recupera +50 HP de vida.
+  P6: "Poción de Velocidad de Movimiento", //Aumenta la velocidad de movimiento del jugador un 60% (x1.6).
+  P7: "Suero de Disparo Múltiple", //Dispara 3 proyectiles en abanico en lugar de uno solo.
+  P8: "Tónico de Hiper-Reflejos", //Reduce el tiempo de espera entre disparos a la mitad (cooldown /2).
+  P9: "Escudo de Energía", //Eres invencible; los proyectiles enemigos no te infligen daño.
+  P10: "Brebaje de Cadencia Extrema", //Elimina el cooldown de disparo (permite ráfagas de máxima velocidad).
   P_basura: "Pocion Basura",
 }
 
