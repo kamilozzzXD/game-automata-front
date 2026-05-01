@@ -73,9 +73,14 @@ type GameStore = {
 
   // ----- Inventario (pociones obtenidas, por tipo) -----
   inventory: Inventory
+  // Inventario de ingredientes recolectados en la mazmorra
+  ingredientInventory: Partial<Record<Ingredient, number>>
   trashCount: number
   addPotion: (id: PotionId) => void
   addTrash: () => void
+  // Acciones para ingredientes
+  collectDungeonIngredients: (nodeId: number, collected: Ingredient[], remaining: (Ingredient | null)[]) => void
+  consumeIngredient: (ingredient: Ingredient) => boolean
 
   // ----- Notificaciones -----
   notifications: GameNotification[]
@@ -212,12 +217,50 @@ export const useGameStore = create<GameStore>((set) => ({
 
   // Inventario
   inventory: {},
+  ingredientInventory: {},
   trashCount: 0,
   addPotion: (id) =>
     set((state) => ({
       inventory: { ...state.inventory, [id]: (state.inventory[id] ?? 0) + 1 },
     })),
   addTrash: () => set((state) => ({ trashCount: state.trashCount + 1 })),
+  collectDungeonIngredients: (nodeId, collected, remaining) =>
+    set((state) => {
+      if (!state.currentDungeon) return {}
+      const newAst = state.currentDungeon.estructura_ast.map((n) =>
+        n.id === nodeId ? { ...n, ingredientes: remaining } : n
+      )
+      
+      const nextInv = { ...state.ingredientInventory }
+      for (const ing of collected) {
+        nextInv[ing] = (nextInv[ing] ?? 0) + 1
+      }
+      
+      return {
+        ingredientInventory: nextInv,
+        currentDungeon: {
+          ...state.currentDungeon,
+          estructura_ast: newAst,
+        },
+      }
+    }),
+  consumeIngredient: (ingredient) => {
+    let success = false
+    set((state) => {
+      const count = state.ingredientInventory[ingredient] ?? 0
+      if (count > 0) {
+        success = true
+        return {
+          ingredientInventory: {
+            ...state.ingredientInventory,
+            [ingredient]: count - 1,
+          },
+        }
+      }
+      return {}
+    })
+    return success
+  },
 
   // Notificaciones
   notifications: [],
