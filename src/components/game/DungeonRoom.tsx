@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react"
 import {
-  GiOpenTreasureChest,
+  //GiOpenTreasureChest,
   GiPortal,
   GiSkullCrossedBones,
   GiTorch,
