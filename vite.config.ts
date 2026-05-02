@@ -13,4 +13,18 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
+  server: {
+    host: true,
+    allowedHosts: true,
+    proxy: {
+      '/api': 'http://127.0.0.1:8000'
+    }
+  },
+  preview: {
+    host: true,
+    allowedHosts: true,
+    proxy: {
+      '/api': 'http://127.0.0.1:8000'
+    }
+  }
 })

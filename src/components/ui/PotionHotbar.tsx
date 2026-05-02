@@ -32,7 +32,7 @@ export function PotionHotbar() {
   const inventory = useGameStore((s) => s.inventory)
   const selectedIndex = useGameStore((s) => s.selectedHotbarIndex)
   const setSelectedIndex = useGameStore((s) => s.setSelectedHotbarIndex)
-  const isInvisible = useGameStore((s) => s.isPlayerInvisible)
+  //const isInvisible = useGameStore((s) => s.isPlayerInvisible)
 
   return (
     // Sprint Polish-Pass v3 - Ticket UI:
