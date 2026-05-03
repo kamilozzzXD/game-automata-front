@@ -2,7 +2,7 @@ import type { CombatRequest, CombatResponse, CraftRequest, CraftResponse } from 
 import type { DungeonResponse } from "../types/dungeon"
 import type { BossRequest, BossResponse } from "../types/boss"
 
-const API_BASE_URL = import.meta.env.VITE_API_URL ?? ""
+const API_BASE_URL = ""
 
 /**
  * Llama al backend para procesar una transicion de la Maquina de Mealy.
