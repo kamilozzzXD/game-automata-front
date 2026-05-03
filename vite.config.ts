@@ -5,7 +5,7 @@ import { codeInspectorPlugin } from 'code-inspector-plugin'
 
 export default defineConfig({
   plugins: [
-    codeInspectorPlugin({ 
+    codeInspectorPlugin({
       bundler: 'vite',
       showSwitch: true,
       hotKeys: ['altKey']
@@ -17,14 +17,14 @@ export default defineConfig({
     host: true,
     allowedHosts: true,
     proxy: {
-      '/api': 'http://127.0.0.1:8000'
+      '/api': process.env.VITE_API_URL || 'http://127.0.0.1:8000'
     }
   },
   preview: {
     host: true,
     allowedHosts: true,
     proxy: {
-      '/api': 'http://127.0.0.1:8000'
+      '/api': process.env.VITE_API_URL || 'http://127.0.0.1:8000'
     }
   }
 })
