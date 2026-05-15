@@ -1,82 +1,73 @@
+// ==========================================
+// API SERVICE - Funciones locales (offline)
+// ==========================================
+// Toda la logica ahora se ejecuta localmente en TypeScript puro.
+// No requiere backend FastAPI ni conexion a internet.
+
 import type { CombatRequest, CombatResponse, CraftRequest, CraftResponse } from "../types/game"
 import type { DungeonResponse } from "../types/dungeon"
 import type { BossRequest, BossResponse } from "../types/boss"
 
-const API_BASE_URL = ""
+// Importar la logica traducida de Python
+import { procesarIngrediente } from "../logic/mealy"
+import { generarMazmorra } from "../logic/dungeon"
+import { procesarIAEnemigo } from "../logic/moore"
+import { procesarDanoTuring } from "../logic/turing"
 
 /**
- * Llama al backend para procesar una transicion de la Maquina de Mealy.
- * El backend recibe el estado actual + el ingrediente y devuelve
- * el nuevo estado y la salida de la transicion.
+ * Procesa una transicion de la Maquina de Mealy (Alquimia).
+ * Ejecuta la logica localmente sin llamar al backend.
  */
 export async function craft(payload: CraftRequest): Promise<CraftResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/craft`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  })
-
-  if (!response.ok) {
-    throw new Error(`Error en /api/craft: ${response.status}`)
+  try {
+    const result = procesarIngrediente(
+      payload.estado_actual,
+      payload.ingrediente
+    )
+    return result
+  } catch (error) {
+    throw new Error(`Error en craft: ${error instanceof Error ? error.message : "Unknown error"}`)
   }
-
-  return (await response.json()) as CraftResponse
 }
 
 /**
- * Llama al backend para generar una mazmorra procedural usando la GLC.
- * No requiere body: el backend resuelve el simbolo inicial N y devuelve
- * la cadena plana + el AST listo para renderizar.
+ * Genera una mazmorra procedural usando la GLC.
+ * Ejecuta la logica localmente sin llamar al backend.
  */
 export async function generateDungeon(): Promise<DungeonResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/generate-dungeon`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-  })
-
-  if (!response.ok) {
-    throw new Error(`Error en /api/generate-dungeon: ${response.status}`)
+  try {
+    return generarMazmorra()
+  } catch (error) {
+    throw new Error(`Error en generate-dungeon: ${error instanceof Error ? error.message : "Unknown error"}`)
   }
-
-  return (await response.json()) as DungeonResponse
 }
 
 /**
- * Llama al backend para ejecutar UN paso de la Maquina de Moore del jefe.
- * Recibe el estado actual + el estimulo (r/v/p) y devuelve el nuevo estado,
- * la accion derivada (Patrullar/Buscar/Atacar) y un mensaje narrativo.
- *
- * El backend es DETERMINISTA: misma (estado, estimulo) -> misma transicion.
+ * Ejecuta un paso de la Maquina de Moore del jefe (IA del Enemigo).
+ * Ejecuta la logica localmente sin llamar al backend.
  */
 export async function bossAction(payload: BossRequest): Promise<BossResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/boss-action`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  })
-
-  if (!response.ok) {
-    throw new Error(`Error en /api/boss-action: ${response.status}`)
+  try {
+    return procesarIAEnemigo(
+      payload.estado_actual,
+      payload.estimulo
+    )
+  } catch (error) {
+    throw new Error(`Error en boss-action: ${error instanceof Error ? error.message : "Unknown error"}`)
   }
-
-  return (await response.json()) as BossResponse
 }
 
 /**
- * Tarea 3.3 - Sistema de combate (Máquina de Turing).
- * Llama al backend para ejecutar la sustracción propia en la cinta de Turing.
- * Recibe HP actual + daño y devuelve el HP resultante (nunca negativo).
+ * Procesa el dano usando la Maquina de Turing (Sistema de Combate).
+ * Ejecuta la logica localmente sin llamar al backend.
  */
 export async function combatHit(payload: CombatRequest): Promise<CombatResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/combat/hit`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  })
-
-  if (!response.ok) {
-    throw new Error(`Error en /api/combat/hit: ${response.status}`)
+  try {
+    return procesarDanoTuring(
+      payload.hp_actual,
+      payload.dano_recibido
+    )
+  } catch (error) {
+    throw new Error(`Error en combat/hit: ${error instanceof Error ? error.message : "Unknown error"}`)
   }
-
-  return (await response.json()) as CombatResponse
 }

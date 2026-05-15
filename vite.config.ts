@@ -7,7 +7,7 @@ export default defineConfig({
   plugins: [
     codeInspectorPlugin({
       bundler: 'vite',
-      showSwitch: true,
+      // showSwitch: true,
       hotKeys: ['altKey']
     }),
     react(),
