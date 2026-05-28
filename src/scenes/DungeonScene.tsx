@@ -1818,14 +1818,16 @@ export function DungeonScene() {
           <DungeonRoom type={currentNode.tipo} worldSize={WORLD_SIZE} />
         )}
 
-        {/* Capa de Oscuridad con Spotlight de Antorcha (z-index: 12) */}
-        <div
-          className="pointer-events-none absolute inset-0"
-          style={{
-            background: `radial-gradient(circle 140px at ${playerPosition.x + PLAYER_SIZE.width / 2}px ${playerPosition.y + PLAYER_SIZE.height / 2}px, transparent 20%, rgba(3, 7, 18, 0.98) 100%)`,
-            zIndex: 12,
-          }}
-        />
+        {/* Capa de Oscuridad con Spotlight de Antorcha (z-index: 12) - Se oculta únicamente en la sala del jefe final */}
+        {!bossPresent && (
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{
+              background: `radial-gradient(circle 140px at ${playerPosition.x + PLAYER_SIZE.width / 2}px ${playerPosition.y + PLAYER_SIZE.height / 2}px, transparent 20%, rgba(3, 7, 18, 0.98) 100%)`,
+              zIndex: 12,
+            }}
+          />
+        )}
 
         {/* Portal de salida (solo en la sala inicial). Sustituye al boton
             de debug que rompia la inmersion. */}
