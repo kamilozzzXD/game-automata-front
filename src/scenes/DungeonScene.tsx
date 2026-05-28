@@ -781,28 +781,7 @@ export function DungeonScene() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isInInicio, isPlayerNearExitPortal, isGenerating])
 
-  // Generar otra mazmorra sin abandonar la escena (regenera in-situ).
-  async function regenerate() {
-    if (isGenerating) return
-    setIsGenerating(true)
-    setKeySpawned(false)
-    setKeyCollected(false)
-    // Forzamos el reset de salaActualId para que el useEffect de inicialización se ejecute
-    setSalaActualId(null)
-    try {
-      const res = await generateDungeon()
-      setCurrentDungeon(res)
-      pushNotification({ kind: "info", message: res.mensaje_ui })
-    } catch (err) {
-      console.error("[v0] Error regenerando mazmorra", err)
-      pushNotification({
-        kind: "error",
-        message: "No se pudo invocar otra mazmorra.",
-      })
-    } finally {
-      setIsGenerating(false)
-    }
-  }
+
 
   const isBossRoom = currentNode?.tipo === "jefe"
   const hasNoChildren = currentNode && currentNode.conexiones.length === 0
@@ -1800,14 +1779,9 @@ export function DungeonScene() {
   }, [bossPresent, secretBossPresent])
 
   // ---------------------------------------------------------------------------
-  // Debug toggle del Modo Furia.
-  // Tarea 3.2 expone esta funcion para que el dev de Tarea 3.3 (HP) la
-  // pueda invocar al perder la primera barra de vida del jefe. Se llama
-  // tambien desde el boton "Activar Furia" del panel de la sala del jefe.
+  // Modo Furia del Jefe (activado automáticamente cuando pierde su primera vida).
   // ---------------------------------------------------------------------------
   const isBossFurious = useGameStore((s) => s.isBossFurious)
-  const activarModoFuria = useGameStore((s) => s.activarModoFuria)
-  const desactivarModoFuria = useGameStore((s) => s.desactivarModoFuria)
 
   return (
     <main className="flex min-h-screen w-full items-center justify-center bg-background p-4">
@@ -2068,39 +2042,7 @@ export function DungeonScene() {
                       : "Atacando - ¡huye o usa Invisibilidad!"}
               </p>
             </div>
-            <div className="pointer-events-auto flex gap-2">
-              <button
-                type="button"
-                onClick={regenerate}
-                disabled={isGenerating}
-                className="flex items-center gap-1 rounded bg-accent px-2 py-1 text-[10px] font-semibold text-background hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <GiVortex
-                  size={12}
-                  className={isGenerating ? "animate-spin" : undefined}
-                />
-                Otra Mazmorra
-              </button>
-              {/* Tarea 3.2 - Boton DEBUG: activa/desactiva el Modo Furia
-                  manualmente porque la Tarea 3.3 (HP del jefe) aun no
-                  esta implementada. Cuando exista el HP, se llamara a
-                  `useGameStore.getState().activarModoFuria()` desde el
-                  evento "Vida 1 == 0" en lugar de este boton. */}
-              <button
-                type="button"
-                onClick={() =>
-                  isBossFurious ? desactivarModoFuria() : activarModoFuria()
-                }
-                className={`flex items-center gap-1 rounded px-2 py-1 text-[10px] font-semibold hover:opacity-90 ${isBossFurious
-                    ? "bg-purple-700 text-purple-100"
-                    : "bg-red-700 text-red-100"
-                  }`}
-                aria-pressed={isBossFurious}
-                title="Debug: simula que el jefe perdio la primera barra de vida"
-              >
-                {isBossFurious ? "Desactivar Furia" : "Activar Furia (debug)"}
-              </button>
-            </div>
+
           </div>
         )}
 
