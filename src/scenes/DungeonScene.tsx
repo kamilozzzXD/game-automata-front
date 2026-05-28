@@ -1244,16 +1244,24 @@ export function DungeonScene() {
             }
 
             // Tarea 3.3: Calcular daño al jefe (P2: Aceite de Puntería aplica x1.5)
-            const currentBossHp = useGameStore.getState().bossHp
-            const bossLives = useGameStore.getState().bossLives
-            if (bossLives > 0) {
+            const phaseAtHit = useGameStore.getState().bossLives
+            const hpAtHit = useGameStore.getState().bossHp
+            if (phaseAtHit > 0) {
               const aimMult = useGameStore.getState().isPotionAimActive ? AIM_POTION_DAMAGE_MULT : 1
               void combatHit({
-                hp_actual: currentBossHp,
+                hp_actual: hpAtHit,
                 dano_recibido: Math.round(PLAYER_PROJECTILE_DAMAGE * aimMult),
               }).then((res) => {
-                useGameStore.getState().applyBossDamage(res.hp_resultante)
-                if (res.hp_resultante === 0 && bossLives === 1) {
+                const currentStore = useGameStore.getState()
+                // Si la fase ya cambió en el store o el jefe ya murió, descartamos este daño residual
+                if (currentStore.bossLives !== phaseAtHit || currentStore.bossLives === 0) {
+                  return
+                }
+
+                currentStore.applyBossDamage(res.hp_resultante)
+
+                const postStore = useGameStore.getState()
+                if (res.hp_resultante === 0 && postStore.bossLives === 0) {
                   setKeySpawned(true)
                   setKeyPosition({ ...bossPositionRef.current })
                   pushNotification({
@@ -1288,6 +1296,9 @@ export function DungeonScene() {
                 hp_actual: currentMiniBossHp,
                 dano_recibido: Math.round(PLAYER_PROJECTILE_DAMAGE * aimMult),
               }).then((res) => {
+                // Si el mini-boss ya fue derrotado por otro proyectil concurrente, ignoramos
+                if (useGameStore.getState().miniBossHp === 0) return
+
                 useGameStore.getState().applyMiniBossDamage(currentNode.id, res.hp_resultante)
               }).catch((err) => {
                 console.error("[v0] Error en combatHit (mini-jefe):", err)
