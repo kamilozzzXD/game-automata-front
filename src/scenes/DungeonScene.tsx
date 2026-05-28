@@ -5,6 +5,7 @@ import {
   GiVortex,
   GiWoodenDoor,
   GiOpenTreasureChest,
+  GiKey,
 } from "react-icons/gi"
 import { Boss } from "../components/game/Boss"
 import { MiniBoss } from "../components/game/MiniBoss"
@@ -37,6 +38,63 @@ function pseudoRandom(seed: number) {
   const x = Math.sin(seed) * 10000;
   return x - Math.floor(x);
 }
+
+function getMiniBossType(nodeId: number): "skeleton" | "ghost" | "witch" {
+  const rand = pseudoRandom(nodeId * 1.3)
+  if (rand < 0.33) return "skeleton"
+  if (rand < 0.66) return "ghost"
+  return "witch"
+}
+
+type Hazard = {
+  id: string
+  type: "lava" | "picos"
+  position: Vector2D
+  size: Size
+}
+
+function generateHazards(node: DungeonNode): Hazard[] {
+  if (node.tipo !== "pasillo" && node.tipo !== "sala") return []
+  const list: Hazard[] = []
+  const count = 3 // 3 peligros por habitación
+  let attempts = 0
+  
+  while (list.length < count && attempts < 50) {
+    const index = list.length
+    const seedX = node.id * 80 + index * 25 + attempts * 9
+    const seedY = node.id * 80 + index * 25 + attempts * 9 + 10
+    const seedType = node.id * 80 + index * 25 + attempts * 9 + 30
+    attempts++
+    
+    // Márgenes seguros: x en 250..WORLD_SIZE.width-250, y en 180..WORLD_SIZE.height-180
+    const x = 250 + pseudoRandom(seedX) * (WORLD_SIZE.width - 500)
+    const y = 180 + pseudoRandom(seedY) * (WORLD_SIZE.height - 360)
+    
+    // Evitar colisión/superposición (distancia mínima de 90px entre centros)
+    let tooClose = false
+    for (const h of list) {
+      const dx = x - h.position.x
+      const dy = y - h.position.y
+      const dist = Math.sqrt(dx * dx + dy * dy)
+      if (dist < 90) {
+        tooClose = true
+        break
+      }
+    }
+    
+    if (tooClose) continue
+    
+    const type = pseudoRandom(seedType) > 0.5 ? "lava" : "picos"
+    list.push({
+      id: `hazard-${node.id}-${index}`,
+      type,
+      position: { x, y },
+      size: { width: 64, height: 64 },
+    })
+  }
+  return list
+}
+
 
 // ---------------------------------------------------------------------------
 // Modelo de puertas: cada habitacion tiene hasta 4 (left/right/top/bottom).
@@ -239,8 +297,8 @@ type ProjectileState = {
 // ---------------------------------------------------------------------------
 
 // Velocidades del jefe (px/frame de rAF, ~60fps).
-const BOSS_PATROL_SPEED = 1   // Estado A: paseo lento.
-const BOSS_ATTACK_SPEED = 2   // Estado C: persecucion.
+const BOSS_PATROL_SPEED = 1.5   // Estado A: paseo lento.
+const BOSS_ATTACK_SPEED = 3.0   // Estado C: persecucion.
 // Distancia minima que el jefe respeta del jugador en estado C, asi su
 // sprite no se monta encima del del jugador (no es parte del spec, pero
 // evita que el AABB del jefe se "trabe" sobre el del jugador).
@@ -261,8 +319,8 @@ const BOSS_PATROL_REACHED_EPSILON = 4
 // Cooldown entre disparos basicos del jefe (estado C).
 const BOSS_SHOOT_COOLDOWN_MS = 1500
 // Tarea 3.3: daño que infligen los proyectiles del jefe al jugador.
-const BOSS_BASIC_PROJECTILE_DAMAGE = 15
-const BOSS_HEAVY_PROJECTILE_DAMAGE = 25
+const BOSS_BASIC_PROJECTILE_DAMAGE = 23
+const BOSS_HEAVY_PROJECTILE_DAMAGE = 38
 
 // Configuracion de los proyectiles del jefe.
 // "Basico": un poco mas grande que el del jugador, mas lento, color rojo.
@@ -296,7 +354,7 @@ const ESQUIRLAS_8_DIR: ReadonlyArray<{ dx: number; dy: number }> = [
   { dx: -0.707, dy: 0.707 },  // SO
 ]
 
-type BossProjectileKind = "basic" | "heavy"
+type BossProjectileKind = "basic" | "heavy" | "poison"
 
 type BossProjectileState = {
   id: number
@@ -381,6 +439,14 @@ export function DungeonScene() {
   const [roomConfigs, setRoomConfigs] = useState<Map<number, RoomConfig>>(
     new Map(),
   )
+
+  // Estados de la Llave de Oro de la Victoria
+  const [keySpawned, setKeySpawned] = useState(false)
+  const [keyCollected, setKeyCollected] = useState(false)
+  const [keyPosition, setKeyPosition] = useState<Vector2D>({ x: 0, y: 0 })
+
+  // Control de teletransporte para el Fantasma
+  const lastGhostTeleportRef = useRef<number>(0)
 
   // Cada vez que llega una mazmorra nueva: reseteamos el cache, spawneamos
   // en el centro del nodo "inicio" y reservamos la pared izquierda para el
@@ -469,6 +535,17 @@ export function DungeonScene() {
       if (
         intersectsAABB(playerPosition, PLAYER_SIZE, backDoor.pos, backDoor.size)
       ) {
+        if (currentNode?.tipo === "jefe" && bossLives > 0) {
+          const now = performance.now()
+          if (now - lastExitWarnRef.current > 3000) {
+            lastExitWarnRef.current = now
+            pushNotification({
+              kind: "error",
+              message: "¡La puerta de la guarida está sellada por magia oscura! Debes derrotar al Jefe.",
+            })
+          }
+          return
+        }
         const parentConfig = roomConfigs.get(parentId)
         const dirInParent =
           salaActualId !== null
@@ -538,11 +615,11 @@ export function DungeonScene() {
       }
       
       if (intersectsAABB(playerPosition, PLAYER_SIZE, chestPos, chestSize)) {
-        // Generar pociones aleatorias
-        const allPotions: PotionId[] = ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10"]
-        const generatedPotions: PotionId[] = []
-        // Entre 2 y 4 pociones para que se sienta recompensante
-        const amount = Math.floor(Math.random() * 3) + 2
+        // Aseguramos exactamente 5 Mezclas Volátiles (P3) en el botín
+        const generatedPotions: PotionId[] = ["P3", "P3", "P3", "P3", "P3"]
+        // Adicionalmente, añadimos entre 1 y 2 pociones aleatorias extra
+        const allPotions: PotionId[] = ["P1", "P2", "P4", "P5", "P6", "P7", "P8", "P9", "P10"]
+        const amount = Math.floor(Math.random() * 2) + 1
         for (let i = 0; i < amount; i++) {
           generatedPotions.push(allPotions[Math.floor(Math.random() * allPotions.length)])
         }
@@ -562,6 +639,64 @@ export function DungeonScene() {
           kind: "success",
           message: `Has encontrado un tesoro mágico: ${summary}`,
         })
+      }
+    }
+
+    // 4.5) Colisión con la Llave de Oro (si está spawnada y no recogida)
+    if (keySpawned && !keyCollected) {
+      const keySize = { width: 48, height: 48 }
+      const keyAABBPos = {
+        x: keyPosition.x + BOSS_SIZE.width / 2 - keySize.width / 2,
+        y: keyPosition.y + BOSS_SIZE.height / 2 - keySize.height / 2,
+      }
+      if (intersectsAABB(playerPosition, PLAYER_SIZE, keyAABBPos, keySize)) {
+        setKeyCollected(true)
+        pushNotification({
+          kind: "success",
+          message: "¡Enhorabuena! Has liberado a los habitantes del pueblo.",
+        })
+        useGameStore.getState().setVictoryAchieved(true)
+      }
+    }
+
+    // 5) Colisión con peligros de suelo (lava/picos - Tarea Combate)
+    if (currentNode && (currentNode.tipo === "pasillo" || currentNode.tipo === "sala")) {
+      const hazards = generateHazards(currentNode)
+      const collidingHazard = hazards.find((h) =>
+        intersectsAABB(playerPosition, PLAYER_SIZE, h.position, h.size)
+      )
+      if (collidingHazard) {
+        const now = performance.now()
+        if (now - lastHazardDamageTimeRef.current > 800) {
+          lastHazardDamageTimeRef.current = now
+          const isShielded = useGameStore.getState().isShieldActive
+          if (!isShielded) {
+            const damage = 10
+            const currentPlayerHp = useGameStore.getState().playerHp
+            if (currentPlayerHp > 0) {
+              void combatHit({
+                hp_actual: currentPlayerHp,
+                dano_recibido: damage,
+              }).then((res) => {
+                useGameStore.getState().setPlayerHp(res.hp_resultante)
+                useGameStore.getState().setPlayerHealthFlash(true)
+                const msg = collidingHazard.type === "lava"
+                  ? "¡Te quemas en la lava! -10 HP (Sustracción propia de Turing)"
+                  : "¡Pisas un foso de picos! -10 HP (Sustracción propia de Turing)"
+                pushNotification({
+                  kind: "error",
+                  message: msg,
+                })
+                if (res.hp_resultante === 0) {
+                  useGameStore.getState().resetBoss()
+                  setBossProyectiles([])
+                }
+              }).catch((err) => {
+                console.error("[v0] Error en combatHit (hazard):", err)
+              })
+            }
+          }
+        }
       }
     }
   }, [
@@ -602,6 +737,8 @@ export function DungeonScene() {
     setPlayerInvisible(false)
     // Tarea 3.3: Al salir de la mazmorra, el jugador recupera toda su vida.
     setPlayerHp(100)
+    setKeySpawned(false)
+    setKeyCollected(false)
   }
 
   // Tecla E para activar el portal de salida cuando el jugador esta cerca.
@@ -624,6 +761,8 @@ export function DungeonScene() {
   async function regenerate() {
     if (isGenerating) return
     setIsGenerating(true)
+    setKeySpawned(false)
+    setKeyCollected(false)
     // Forzamos el reset de salaActualId para que el useEffect de inicialización se ejecute
     setSalaActualId(null)
     try {
@@ -744,8 +883,18 @@ export function DungeonScene() {
   useEffect(() => {
     if (bossPresent) {
       resetBoss()
+      setKeySpawned(false)
+      setKeyCollected(false)
     }
   }, [bossPresent, resetBoss])
+
+  const playerHp = useGameStore((s) => s.playerHp)
+  useEffect(() => {
+    if (playerHp === 0) {
+      setKeySpawned(false)
+      setKeyCollected(false)
+    }
+  }, [playerHp])
 
   // -------------------------------------------------------------------------
   // Sprint 4 - Polling de la IA (Maquina de Moore).
@@ -970,6 +1119,10 @@ export function DungeonScene() {
   proyectilesRef.current = proyectiles
   // Ref para el cooldown del disparo (no necesita causar re-render).
   const lastShotAtRef = useRef<number>(0)
+  // Ref para controlar el cooldown de daño al pisar trampas (lava/picos)
+  const lastHazardDamageTimeRef = useRef<number>(0)
+  // Ref para controlar el ritmo de advertencias de salida sellada (Tarea Guarida Sellada)
+  const lastExitWarnRef = useRef<number>(0)
   // Para que cada proyectil tenga un id unico aun si se disparan dos
   // en el mismo `Date.now()` (cooldown 180ms hace casi imposible la
   // colision, pero esto vuelve el id determinista y a prueba de balas).
@@ -1110,15 +1263,31 @@ export function DungeonScene() {
             }
 
             // Tarea 3.3: Calcular daño al jefe (P2: Aceite de Puntería aplica x1.5)
-            const currentBossHp = useGameStore.getState().bossHp
-            const bossLives = useGameStore.getState().bossLives
-            if (bossLives > 0) {
+            const phaseAtHit = useGameStore.getState().bossLives
+            const hpAtHit = useGameStore.getState().bossHp
+            if (phaseAtHit > 0) {
               const aimMult = useGameStore.getState().isPotionAimActive ? AIM_POTION_DAMAGE_MULT : 1
               void combatHit({
-                hp_actual: currentBossHp,
+                hp_actual: hpAtHit,
                 dano_recibido: Math.round(PLAYER_PROJECTILE_DAMAGE * aimMult),
               }).then((res) => {
-                useGameStore.getState().applyBossDamage(res.hp_resultante)
+                const currentStore = useGameStore.getState()
+                // Si la fase ya cambió en el store o el jefe ya murió, descartamos este daño residual
+                if (currentStore.bossLives !== phaseAtHit || currentStore.bossLives === 0) {
+                  return
+                }
+
+                currentStore.applyBossDamage(res.hp_resultante)
+
+                const postStore = useGameStore.getState()
+                if (res.hp_resultante === 0 && postStore.bossLives === 0) {
+                  setKeySpawned(true)
+                  setKeyPosition({ ...bossPositionRef.current })
+                  pushNotification({
+                    kind: "success",
+                    message: "¡El Jefe ha sido derrotado! Una misteriosa Llave Dorada ha aparecido sobre un pedestal de luz.",
+                  })
+                }
               }).catch((err) => {
                 console.error("[v0] Error en combatHit (jefe):", err)
               })
@@ -1146,6 +1315,9 @@ export function DungeonScene() {
                 hp_actual: currentMiniBossHp,
                 dano_recibido: Math.round(PLAYER_PROJECTILE_DAMAGE * aimMult),
               }).then((res) => {
+                // Si el mini-boss ya fue derrotado por otro proyectil concurrente, ignoramos
+                if (useGameStore.getState().miniBossHp === 0) return
+
                 useGameStore.getState().applyMiniBossDamage(currentNode.id, res.hp_resultante)
               }).catch((err) => {
                 console.error("[v0] Error en combatHit (mini-jefe):", err)
@@ -1267,7 +1439,7 @@ export function DungeonScene() {
       let pendingSpawn: BossProjectileState | null = null
 
       if (isAlive) {
-        // -------- 1) Movimiento del jefe segun el estado de Moore --------
+        // -------- 1) Movimiento del jefe/mini-jefe segun el estado de Moore --------
         if (state === "A") {
           // Patrullaje. Si no tenemos objetivo o estamos cerca de el,
           // elegimos un nuevo punto aleatorio dentro de un radio
@@ -1300,45 +1472,86 @@ export function DungeonScene() {
           const playerCenter = center(snap.playerPosition, PLAYER_SIZE)
           const bossCenter = center(cur, BOSS_SIZE)
           const distToPlayer = distance(bossCenter, playerCenter)
-          if (distToPlayer > BOSS_MIN_DISTANCE_TO_PLAYER) {
-            // Convertimos el target del centro a la esquina sup-izq.
-            const target: Vector2D = {
-            x: playerCenter.x - BOSS_SIZE.width / 2,
-            y: playerCenter.y - BOSS_SIZE.height / 2,
+
+          if (isMini && getMiniBossType(currentNode?.id ?? 0) === "ghost") {
+            // Teletransporte del fantasma cada 2.5s
+            const nowTime = performance.now()
+            if (nowTime - lastGhostTeleportRef.current >= 2500) {
+              lastGhostTeleportRef.current = nowTime
+              const angle = Math.random() * Math.PI * 2
+              const radius = 130 + Math.random() * 70 // 130 a 200px
+              const targetX = playerCenter.x + Math.cos(angle) * radius - BOSS_SIZE.width / 2
+              const targetY = playerCenter.y + Math.sin(angle) * radius - BOSS_SIZE.height / 2
+              const clampedX = Math.max(BOSS_WORLD_MARGIN, Math.min(WORLD_SIZE.width - BOSS_SIZE.width - BOSS_WORLD_MARGIN, targetX))
+              const clampedY = Math.max(BOSS_WORLD_MARGIN, Math.min(WORLD_SIZE.height - BOSS_SIZE.height - BOSS_WORLD_MARGIN, targetY))
+              
+              nextBossPos = { x: clampedX, y: clampedY }
+              
+              pushNotification({
+                kind: "info",
+                message: "¡El Fantasma se desvanece y se teletransporta!",
+              })
+            } else {
+              if (distToPlayer > BOSS_MIN_DISTANCE_TO_PLAYER) {
+                const target: Vector2D = {
+                  x: playerCenter.x - BOSS_SIZE.width / 2,
+                  y: playerCenter.y - BOSS_SIZE.height / 2,
+                }
+                nextBossPos = stepTowards(cur, target, BOSS_ATTACK_SPEED * speedMult)
+              }
+            }
+          } else {
+            if (distToPlayer > BOSS_MIN_DISTANCE_TO_PLAYER) {
+              // Convertimos el target del centro a la esquina sup-izq.
+              const target: Vector2D = {
+                x: playerCenter.x - BOSS_SIZE.width / 2,
+                y: playerCenter.y - BOSS_SIZE.height / 2,
+              }
+              nextBossPos = stepTowards(cur, target, BOSS_ATTACK_SPEED * speedMult)
+            }
           }
-          nextBossPos = stepTowards(cur, target, BOSS_ATTACK_SPEED * speedMult)
         }
-      }
 
-      // Clamp final a los bordes del mundo (defensivo).
-      nextBossPos = {
-        x: clampX(nextBossPos.x),
-        y: clampY(nextBossPos.y),
-      }
-
-      if (nextBossPos.x !== cur.x || nextBossPos.y !== cur.y) {
-        if (isMini) {
-          miniBossPositionRef.current = nextBossPos
-          setMiniBossPosition(nextBossPos)
-        } else {
-          bossPositionRef.current = nextBossPos
-          setBossPosition(nextBossPos)
+        // Clamp final a los bordes del mundo (defensivo).
+        nextBossPos = {
+          x: clampX(nextBossPos.x),
+          y: clampY(nextBossPos.y),
         }
-      }
 
-      // -------- 2) Ataque del jefe (solo en estado C) --------
-      // Construimos el nuevo proyectil PERO no lo metemos al state aun:
-      // lo pasamos a stepBossProjectiles para hacer un solo setState
-      // por frame (sino la segunda escritura "pisa" la primera).
-      const now = performance.now()
-      if (
-        state === "C" &&
-        now - lastBossShotAtRef.current >= BOSS_SHOOT_COOLDOWN_MS
-      ) {
-        lastBossShotAtRef.current = now
-        pendingSpawn = buildBossShotAtPlayer(furious, cur)
-      }
-    } // Fin if isAlive
+        if (nextBossPos.x !== cur.x || nextBossPos.y !== cur.y) {
+          if (isMini) {
+            miniBossPositionRef.current = nextBossPos
+            setMiniBossPosition(nextBossPos)
+          } else {
+            bossPositionRef.current = nextBossPos
+            setBossPosition(nextBossPos)
+          }
+        }
+
+        // -------- 2) Ataque del jefe / mini-jefe (solo en estado C) --------
+        const now = performance.now()
+        if (state === "C") {
+          if (isMini) {
+            const miniType = getMiniBossType(currentNode?.id ?? 0)
+            if (miniType === "witch") {
+              if (now - lastBossShotAtRef.current >= 1500) {
+                lastBossShotAtRef.current = now
+                pendingSpawn = buildBossShotAtPlayer(false, cur, "poison")
+              }
+            } else {
+              if (now - lastBossShotAtRef.current >= BOSS_SHOOT_COOLDOWN_MS) {
+                lastBossShotAtRef.current = now
+                pendingSpawn = buildBossShotAtPlayer(false, cur, "basic")
+              }
+            }
+          } else {
+            if (now - lastBossShotAtRef.current >= BOSS_SHOOT_COOLDOWN_MS) {
+              lastBossShotAtRef.current = now
+              pendingSpawn = buildBossShotAtPlayer(furious, cur, "basic")
+            }
+          }
+        }
+      } // Fin if isAlive
 
       // -------- 3) Movimiento de los proyectiles del jefe + colisiones --------
       stepBossProjectiles(snap.playerPosition, pendingSpawn)
@@ -1381,7 +1594,8 @@ export function DungeonScene() {
     // No toca el state: solo devuelve el objeto (lo mete stepBossProjectiles).
     function buildBossShotAtPlayer(
       furious: boolean,
-      bossC_topleft: Vector2D
+      bossC_topleft: Vector2D,
+      projKind: BossProjectileKind = "basic"
     ): BossProjectileState | null {
       const playerC = center(
         useGameStore.getState().playerPosition,
@@ -1394,6 +1608,19 @@ export function DungeonScene() {
       // Defensa: si por casualidad coinciden centros (no deberia, hay
       // BOSS_MIN_DISTANCE_TO_PLAYER), no disparamos.
       if (len === 0) return null
+
+      if (projKind === "poison") {
+        bossProjectileIdRef.current += 1
+        return {
+          id: bossProjectileIdRef.current,
+          x: bossC.x,
+          y: bossC.y,
+          dx: vx / len,
+          dy: vy / len,
+          distanciaRecorrida: 0,
+          kind: "poison",
+        }
+      }
 
       // Modo Furia: 50% Basico, 50% Pesado. Math.random() <= 0.5 da el
       // mismo resultado que > 0.5 invertido (la spec dice "> 0.5: basico,
@@ -1490,7 +1717,9 @@ export function DungeonScene() {
           // Turing del backend para mantener consistencia académica.
           const damage = p.kind === "heavy"
             ? BOSS_HEAVY_PROJECTILE_DAMAGE
-            : BOSS_BASIC_PROJECTILE_DAMAGE
+            : p.kind === "poison"
+              ? 15
+              : BOSS_BASIC_PROJECTILE_DAMAGE
           const currentPlayerHp = useGameStore.getState().playerHp
           // Solo procesamos si el jugador sigue vivo
           if (currentPlayerHp > 0) {
@@ -1500,6 +1729,12 @@ export function DungeonScene() {
             }).then((res) => {
               useGameStore.getState().setPlayerHp(res.hp_resultante)
               useGameStore.getState().setPlayerHealthFlash(true)
+              if (p.kind === "poison") {
+                pushNotification({
+                  kind: "error",
+                  message: "¡La pócima de veneno de la Bruja te impacta! -15 HP (Sustracción propia de Turing)",
+                })
+              }
               // Game Over: si hp_resultante === 0, el jugador murió
               if (res.hp_resultante === 0) {
                 // La pantalla de muerte maneja el retorno.
@@ -1561,6 +1796,15 @@ export function DungeonScene() {
           <DungeonRoom type={currentNode.tipo} worldSize={WORLD_SIZE} />
         )}
 
+        {/* Capa de Oscuridad con Spotlight de Antorcha (z-index: 12) */}
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background: `radial-gradient(circle 140px at ${playerPosition.x + PLAYER_SIZE.width / 2}px ${playerPosition.y + PLAYER_SIZE.height / 2}px, transparent 20%, rgba(3, 7, 18, 0.98) 100%)`,
+            zIndex: 12,
+          }}
+        />
+
         {/* Portal de salida (solo en la sala inicial). Sustituye al boton
             de debug que rompia la inmersion. */}
         {isInInicio && (
@@ -1581,12 +1825,18 @@ export function DungeonScene() {
               dir={dir}
               variant="forward"
               destId={cid}
+              destType={nodeMap.get(cid)?.tipo}
             />
           ))}
 
         {/* Puerta hacia el padre (direccion = de donde vino el jugador) */}
         {currentConfig && currentConfig.backDir !== null && parentId !== null && (
-          <DoorTile dir={currentConfig.backDir} variant="back" destId={parentId} />
+          <DoorTile
+            dir={currentConfig.backDir}
+            variant="back"
+            destId={parentId}
+            locked={currentNode?.tipo === "jefe" && bossLives > 0}
+          />
         )}
 
         {/* Jefe (solo en la sala con tipo "jefe" sin hijos) */}
@@ -1595,8 +1845,13 @@ export function DungeonScene() {
         )}
 
         {/* Mini-Boss (solo en salas secretas) */}
-        {secretBossPresent && miniBossHp > 0 && (
-          <MiniBoss position={miniBossPosition} size={BOSS_SIZE} state={miniBossState} />
+        {secretBossPresent && miniBossHp > 0 && currentNode && (
+          <MiniBoss
+            position={miniBossPosition}
+            size={BOSS_SIZE}
+            state={miniBossState}
+            type={getMiniBossType(currentNode.id)}
+          />
         )}
 
         {/* Proyectiles del JEFE (Tarea 3.2).
@@ -1612,7 +1867,13 @@ export function DungeonScene() {
                 ? BOSS_HEAVY_PROJECTILE_SIZE.width
                 : BOSS_BASIC_PROJECTILE_SIZE.width
             }
-            variant={p.kind === "heavy" ? "boss-heavy" : "boss-basic"}
+            variant={
+              p.kind === "heavy"
+                ? "boss-heavy"
+                : p.kind === "poison"
+                  ? "boss-poison"
+                  : "boss-basic"
+            }
           />
         ))}
 
@@ -1661,6 +1922,53 @@ export function DungeonScene() {
             aria-hidden
           />
         )}
+
+        {/* Llave de Oro de la Victoria sobre Pedestal de Luz */}
+        {keySpawned && !keyCollected && (
+          <div
+            className="absolute z-20 flex items-center justify-center pointer-events-none animate-fade-in"
+            style={{
+              left: keyPosition.x,
+              top: keyPosition.y,
+              width: BOSS_SIZE.width,
+              height: BOSS_SIZE.height,
+            }}
+          >
+            {/* Pedestal de luz vertical */}
+            <div
+              className="absolute bottom-0 w-16 h-40 bg-gradient-to-t from-yellow-500/40 via-yellow-400/20 to-transparent rounded-full blur-md animate-pulse"
+              style={{
+                transform: "translateY(20px)",
+              }}
+              aria-hidden
+            />
+            {/* Halo brillante en la base */}
+            <div
+              className="absolute bottom-0 w-12 h-4 bg-yellow-500/50 rounded-full blur-sm animate-pulse"
+              style={{
+                transform: "translateY(35px) scaleY(0.3)",
+              }}
+              aria-hidden
+            />
+            {/* Llave Dorada rebotando */}
+            <GiKey
+              className="relative text-yellow-400 drop-shadow-[0_0_15px_rgba(250,204,21,0.95)] animate-bounce"
+              size={48}
+              style={{
+                animationDuration: "2s",
+              }}
+            />
+          </div>
+        )}
+
+        {/* Peligros en el suelo (z-index: 5) */}
+        {currentNode && generateHazards(currentNode).map((h) => (
+          <HazardTile
+            key={h.id}
+            hazard={h}
+            playerPos={playerPosition}
+          />
+        ))}
 
         {/* Jugador */}
         <Player position={playerPosition} size={PLAYER_SIZE} />
@@ -1797,48 +2105,72 @@ function DoorTile({
   dir,
   variant,
   destId,
+  destType,
+  locked,
 }: {
   dir: DoorDir
   variant: "forward" | "back"
   destId: number
+  destType?: string
+  locked?: boolean
 }) {
   const { pos, size } = DOOR_RECTS[dir]
   const isHorizontal = dir === "top" || dir === "bottom"
   const isBack = variant === "back"
+  const isBossDoor = destType === "jefe"
+
+  // Clases y colores
+  let haloClass = isBack ? "bg-slate-400/30" : "bg-amber-300/40"
+  let borderClass = isBack ? "border-slate-300/70" : "border-amber-300/80"
+  let shadowColor = isBack ? "rgba(203, 213, 225, 0.4)" : "rgba(252, 211, 77, 0.6)"
+
+  if (locked) {
+    haloClass = "bg-purple-900/60"
+    borderClass = "border-purple-600/90"
+    shadowColor = "rgba(168, 85, 247, 0.9)"
+  } else if (isBossDoor) {
+    haloClass = "bg-red-900/50 animate-pulse"
+    borderClass = "border-red-500/80"
+    shadowColor = "rgba(239, 68, 68, 0.9)"
+  }
 
   return (
     <div
-      className="absolute z-10 flex items-center justify-center"
+      className="absolute z-20 flex items-center justify-center"
       style={{
         left: pos.x,
         top: pos.y,
         width: size.width,
         height: size.height,
       }}
-      aria-label={`Puerta ${isBack ? "atras" : "adelante"} hacia sala ${destId}`}
+      aria-label={`Puerta ${isBack ? "atras" : "adelante"} hacia sala ${destId} ${locked ? "(SELLADA)" : ""}`}
     >
       {/* Halo de la puerta */}
       <div
-        className={`absolute inset-0 rounded-sm ${
-          isBack ? "bg-slate-400/30" : "bg-amber-300/40"
-        } animate-pulse`}
+        className={`absolute inset-0 rounded-sm ${haloClass} animate-pulse`}
         aria-hidden
       />
       {/* Marco de la puerta */}
       <div
-        className={`absolute inset-0 border-2 ${
-          isBack ? "border-slate-300/70" : "border-amber-300/80"
-        }`}
+        className={`absolute inset-0 border-2 ${borderClass}`}
         style={{
           borderRadius: 4,
-          boxShadow: isBack
-            ? "0 0 16px rgba(203, 213, 225, 0.4)"
-            : "0 0 16px rgba(252, 211, 77, 0.6)",
+          boxShadow: `0 0 20px ${shadowColor}`,
         }}
         aria-hidden
       />
       {/* Icono */}
-      {isBack ? (
+      {locked ? (
+        <GiSkullCrossedBones
+          className="relative text-purple-300 drop-shadow animate-bounce-slow"
+          size={isHorizontal ? size.height : size.width}
+        />
+      ) : isBossDoor ? (
+        <GiSkullCrossedBones
+          className="relative text-red-300 drop-shadow animate-pulse"
+          size={isHorizontal ? size.height : size.width}
+        />
+      ) : isBack ? (
         <GiDoor
           className="relative text-slate-200 drop-shadow"
           size={isHorizontal ? size.height + 4 : size.width + 4}
@@ -1848,6 +2180,116 @@ function DoorTile({
           className="relative text-amber-200 drop-shadow"
           size={isHorizontal ? size.height + 4 : size.width + 4}
         />
+      )}
+    </div>
+  )
+}
+
+function HazardTile({
+  hazard,
+  playerPos,
+}: {
+  hazard: Hazard
+  playerPos: Vector2D
+}) {
+  const isLava = hazard.type === "lava"
+  const dist = distance(
+    center(playerPos, PLAYER_SIZE),
+    center(hazard.position, hazard.size)
+  )
+  // La antorcha ilumina 140px, dejamos 160px para el efecto de borde luminoso
+  const inLight = dist <= 160
+
+  // Generar un borde de charco orgánico determinista para cada lava basado en su ID/posición
+  const puddleBorderRadius = isLava
+    ? `${35 + (hazard.position.x % 15)}% ${55 + (hazard.position.y % 15)}% ${40 + (hazard.position.x % 20)}% ${50 + (hazard.position.y % 20)}% / ${45 + (hazard.position.y % 15)}% ${45 + (hazard.position.x % 15)}% ${55 + (hazard.position.y % 20)}% ${50 + (hazard.position.x % 20)}%`
+    : "12px" // 12px equivale a rounded-xl
+
+  return (
+    <div
+      className={`absolute overflow-hidden flex items-center justify-center border ${
+        isLava
+          ? "border-orange-500/80 shadow-[inset_0_0_10px_rgba(124,45,18,0.7)]"
+          : "border-slate-800/80"
+      }`}
+      style={{
+        left: hazard.position.x,
+        top: hazard.position.y,
+        width: hazard.size.width,
+        height: hazard.size.height,
+        borderRadius: puddleBorderRadius,
+        background: isLava
+          ? "radial-gradient(circle, #f97316 20%, #ea580c 60%, #7c2d12 100%)"
+          : "none",
+        boxShadow: isLava && inLight ? "0 0 18px rgba(234, 88, 12, 0.75)" : "none",
+        zIndex: 5, // Debajo de la capa de oscuridad (z-12)
+      }}
+    >
+      {isLava ? (
+        <div className="relative w-full h-full">
+          <div className="absolute inset-0 bg-orange-500/20 mix-blend-overlay animate-pulse" />
+          {/* Boiling bubbles */}
+          <div className="w-2.5 h-2.5 rounded-full bg-yellow-400 absolute opacity-70 animate-bubble" style={{ left: "12px", bottom: "8px", animationDelay: "0.2s" }} />
+          <div className="w-2 h-2 rounded-full bg-orange-400 absolute opacity-80 animate-bubble" style={{ left: "34px", bottom: "14px", animationDelay: "0.8s" }} />
+          <div className="w-1.5 h-1.5 rounded-full bg-yellow-300 absolute opacity-90 animate-bubble" style={{ left: "22px", bottom: "28px", animationDelay: "1.4s" }} />
+          <div className="w-2.5 h-2.5 rounded-full bg-yellow-400 absolute opacity-70 animate-bubble" style={{ left: "44px", bottom: "6px", animationDelay: "2.0s" }} />
+        </div>
+      ) : (
+        /* High Definition 3D Vector Spikes SVG on Cracked Dark Stone */
+        <svg viewBox="0 0 64 64" className="w-full h-full select-none pointer-events-none">
+          <defs>
+            <radialGradient id="cracked-stone" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="#475569" />
+              <stop offset="60%" stopColor="#1e293b" />
+              <stop offset="100%" stopColor="#0f172a" />
+            </radialGradient>
+            <linearGradient id="metal-light" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#f1f5f9" />
+              <stop offset="50%" stopColor="#cbd5e1" />
+              <stop offset="100%" stopColor="#64748b" />
+            </linearGradient>
+            <linearGradient id="metal-dark" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#475569" />
+              <stop offset="70%" stopColor="#334155" />
+              <stop offset="100%" stopColor="#0f172a" />
+            </linearGradient>
+          </defs>
+
+          {/* Cracked stone backdrop */}
+          <rect width="64" height="64" fill="url(#cracked-stone)" />
+          
+          {/* Subtle rock cracks */}
+          <path d="M 0 10 L 20 25 L 35 15 L 64 45 M 10 64 L 25 45 L 20 25 M 64 12 L 44 20 L 48 44 L 25 45" stroke="#020617" strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.65" />
+          <path d="M 0 10 L 20 25 L 35 15 L 64 45 M 10 64 L 25 45 L 20 25 M 64 12 L 44 20 L 48 44 L 25 45" stroke="#475569" strokeWidth="0.5" strokeLinecap="round" fill="none" opacity="0.35" />
+
+          {/* 3D Spikes (Spike 1: center 20, 24) */}
+          <g>
+            <ellipse cx="20" cy="36" rx="9" ry="3" fill="#020617" opacity="0.6" />
+            <polygon points="11,35 20,12 20,35" fill="url(#metal-light)" />
+            <polygon points="20,35 20,12 29,35" fill="url(#metal-dark)" />
+          </g>
+
+          {/* Spike 2: center 44, 20 */}
+          <g>
+            <ellipse cx="44" cy="34" rx="10" ry="3" fill="#020617" opacity="0.6" />
+            <polygon points="34,33 44,7 44,33" fill="url(#metal-light)" />
+            <polygon points="44,33 44,7 54,33" fill="url(#metal-dark)" />
+          </g>
+
+          {/* Spike 3: center 16, 48 */}
+          <g>
+            <ellipse cx="16" cy="58" rx="11" ry="3.5" fill="#020617" opacity="0.6" />
+            <polygon points="5,57 16,30 16,57" fill="url(#metal-light)" />
+            <polygon points="16,57 16,30 27,57" fill="url(#metal-dark)" />
+          </g>
+
+          {/* Spike 4: center 48, 44 */}
+          <g>
+            <ellipse cx="48" cy="54" rx="8" ry="2.5" fill="#020617" opacity="0.6" />
+            <polygon points="40,53 48,31 48,53" fill="url(#metal-light)" />
+            <polygon points="48,53 48,31 56,53" fill="url(#metal-dark)" />
+          </g>
+        </svg>
       )}
     </div>
   )

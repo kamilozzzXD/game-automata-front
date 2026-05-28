@@ -3,7 +3,8 @@ import { useGameStore } from "../../core/gameStore"
 import victoryScreenImg from "../../assets/victoria-jugador.png"
 
 export function VictoryScreen() {
-  const bossLives = useGameStore((s) => s.bossLives)
+  const isVictoryAchieved = useGameStore((s) => s.isVictoryAchieved)
+  const setVictoryAchieved = useGameStore((s) => s.setVictoryAchieved)
   const setCurrentScene = useGameStore((s) => s.setCurrentScene)
   const setPlayerHp = useGameStore((s) => s.setPlayerHp)
   const setPlayerPosition = useGameStore((s) => s.setPlayerPosition)
@@ -12,7 +13,7 @@ export function VictoryScreen() {
   const resetBossHealth = useGameStore((s) => s.resetBossHealth)
 
   useEffect(() => {
-    if (bossLives > 0) return
+    if (!isVictoryAchieved) return
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Enter") {
@@ -22,14 +23,15 @@ export function VictoryScreen() {
         setPlayerHp(100)
         resetBoss()
         resetBossHealth()
+        setVictoryAchieved(false)
       }
     }
 
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [bossLives, setCurrentScene, setPlayerHp, setPlayerPosition, setPlayerInvisible, resetBoss, resetBossHealth])
+  }, [isVictoryAchieved, setCurrentScene, setPlayerHp, setPlayerPosition, setPlayerInvisible, resetBoss, resetBossHealth, setVictoryAchieved])
 
-  if (bossLives > 0) return null
+  if (!isVictoryAchieved) return null
 
   return (
     <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/85 backdrop-blur-sm">

@@ -37,16 +37,6 @@ export function useHotbarControls({ enabled, onUsePotion }: Options) {
         cycleHotbar(e.shiftKey ? -1 : 1)
         return
       }
-      if (key === "ArrowDown") {
-        e.preventDefault()
-        cycleHotbar(1)
-        return
-      }
-      if (key === "ArrowUp") {
-        e.preventDefault()
-        cycleHotbar(-1)
-        return
-      }
 
       // Direct selection con teclado numerico (1..9 -> slots 0..8, 0 -> slot 9)
       if (/^[0-9]$/.test(key)) {
