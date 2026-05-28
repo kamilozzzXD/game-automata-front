@@ -82,6 +82,7 @@ type GameStore = {
   collectDungeonIngredients: (nodeId: number, collected: Ingredient[], remaining: (Ingredient | null)[]) => void
   claimSecretRoomPotions: (nodeId: number, potions: PotionId[]) => void
   consumeIngredient: (ingredient: Ingredient) => boolean
+  addIngredient: (ingredient: Ingredient) => void
 
   // ----- Notificaciones -----
   notifications: GameNotification[]
@@ -209,6 +210,8 @@ type GameStore = {
   setIsShieldActive: (b: boolean) => void
   isExtremeCadenceActive: boolean  // P10: cooldown disparo ~0
   setIsExtremeCadenceActive: (b: boolean) => void
+  isVictoryAchieved: boolean
+  setVictoryAchieved: (b: boolean) => void
 }
 
 let notificationCounter = 0
@@ -241,10 +244,10 @@ export const useGameStore = create<GameStore>((set) => ({
   setIsCrafting: (b) => set({ isCrafting: b }),
   clearTrail: () => set({ ingredientHistory: [] }),
 
-  // Inventario (Modo Debug: 20 de cada una)
+  // Inventario (Balance inicial para Joan)
   inventory: {
-    P1: 20, P2: 20, P3: 20, P4: 20, P5: 20,
-    P6: 20, P7: 20, P8: 20, P9: 20, P10: 20,
+    P1: 1, P2: 1, P3: 10, P4: 1, P5: 1,
+    P6: 1, P7: 1, P8: 1, P9: 1, P10: 1,
   },
   ingredientInventory: {},
   trashCount: 0,
@@ -308,6 +311,13 @@ export const useGameStore = create<GameStore>((set) => ({
     })
     return success
   },
+  addIngredient: (ingredient) =>
+    set((state) => ({
+      ingredientInventory: {
+        ...state.ingredientInventory,
+        [ingredient]: (state.ingredientInventory[ingredient] ?? 0) + 1,
+      },
+    })),
 
   // Notificaciones
   notifications: [],
@@ -391,6 +401,7 @@ export const useGameStore = create<GameStore>((set) => ({
       bossHp: 100,
       bossLives: 2,
       bossHealthFlash: false,
+      isVictoryAchieved: false,
     }),
 
   // Modo Furia (Tarea 3.2 - handoff a Tarea 3.3).
@@ -494,4 +505,6 @@ export const useGameStore = create<GameStore>((set) => ({
   setIsShieldActive: (b) => set({ isShieldActive: b }),
   isExtremeCadenceActive: false,
   setIsExtremeCadenceActive: (b) => set({ isExtremeCadenceActive: b }),
+  isVictoryAchieved: false,
+  setVictoryAchieved: (b) => set({ isVictoryAchieved: b }),
 }))
