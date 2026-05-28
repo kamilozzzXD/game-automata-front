@@ -412,6 +412,7 @@ export function DungeonScene() {
   const collectDungeonIngredients = useGameStore((s) => s.collectDungeonIngredients)
   const claimSecretRoomPotions = useGameStore((s) => s.claimSecretRoomPotions)
   const playerHp = useGameStore((s) => s.playerHp)
+  const isVictoryAchieved = useGameStore((s) => s.isVictoryAchieved)
 
   // Sprint 4 - Estado del jefe (Maquina de Moore) e invisibilidad
   const bossState = useGameStore((s) => s.bossState)
@@ -491,7 +492,7 @@ export function DungeonScene() {
   }, [dungeon, salaActualId, setPlayerPosition])
 
   // Movimiento del jugador (mismo hook que el bosque).
-  const movementEnabled = salaActualId !== null && !isGenerating && playerHp > 0
+  const movementEnabled = salaActualId !== null && !isGenerating && playerHp > 0 && !isVictoryAchieved
   const keysRef = useGameKeyboard(movementEnabled)
   usePlayerMovement({
     position: playerPosition,
