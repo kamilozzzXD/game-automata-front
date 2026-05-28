@@ -30,6 +30,7 @@ import { parseBossState } from "../types/boss"
 import type { BossAction, BossState, BossStimulus } from "../types/boss"
 import type { DungeonNode } from "../types/dungeon"
 import type { Ingredient, Interactable, PotionId, Size, Vector2D } from "../types/game"
+import musicaUrl from "../assets/musica.mp3"
 
 const WORLD_SIZE: Size = { width: 960, height: 600 }
 const PLAYER_SIZE: Size = { width: 48, height: 48 }
@@ -448,6 +449,26 @@ export function DungeonScene() {
 
   // Control de teletransporte para el Fantasma
   const lastGhostTeleportRef = useRef<number>(0)
+
+  // Reproducción de música de fondo de la mazmorra en bucle.
+  // Se apaga automáticamente en caso de muerte (playerHp === 0) o al salir de la escena.
+  useEffect(() => {
+    const audio = new Audio(musicaUrl)
+    audio.loop = true
+    audio.volume = 0.3 // Volumen agradable
+
+    if (playerHp > 0) {
+      audio.play().catch((err) => {
+        console.warn("La reproducción de música fue bloqueada o falló:", err)
+      })
+    } else {
+      audio.pause()
+    }
+
+    return () => {
+      audio.pause()
+    }
+  }, [playerHp === 0])
 
   // Cada vez que llega una mazmorra nueva: reseteamos el cache, spawneamos
   // en el centro del nodo "inicio" y reservamos la pared izquierda para el
