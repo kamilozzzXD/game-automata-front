@@ -8,6 +8,7 @@ import type {
 } from "../types/game"
 import type { DungeonResponse } from "../types/dungeon"
 import type { BossAction, BossState } from "../types/boss"
+import { INITIAL_POTIONS } from "./diccionario"
 
 // Sprint 4 - Barra de acceso rapido (hotbar vertical).
 // Tenemos 10 slots fijos, uno por tipo de pocion (P1..P10).
@@ -88,6 +89,7 @@ type GameStore = {
   notifications: GameNotification[]
   pushNotification: (n: Omit<GameNotification, "id">) => void
   removeNotification: (id: number) => void
+  clearNotifications: () => void
 
   // ----- Escena actual (Sprint 3.1) -----
   // El juego ahora tiene varias escenas; el portal cambia de bosque a mazmorra.
@@ -244,11 +246,8 @@ export const useGameStore = create<GameStore>((set) => ({
   setIsCrafting: (b) => set({ isCrafting: b }),
   clearTrail: () => set({ ingredientHistory: [] }),
 
-  // Inventario (Balance inicial para Joan)
-  inventory: {
-    P1: 1, P2: 1, P3: 10, P4: 1, P5: 1,
-    P6: 1, P7: 1, P8: 1, P9: 1, P10: 1,
-  },
+  // Inventario (Balance inicial cargado desde diccionario.tsx)
+  inventory: { ...INITIAL_POTIONS },
   ingredientInventory: {},
   trashCount: 0,
   addPotion: (id) =>
@@ -329,6 +328,8 @@ export const useGameStore = create<GameStore>((set) => ({
     set((state) => ({
       notifications: state.notifications.filter((x) => x.id !== id),
     })),
+  clearNotifications: () =>
+    set({ notifications: [] }),
 
   // Escena
   currentScene: "forest",
