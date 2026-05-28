@@ -60,37 +60,7 @@ export function ForestScene() {
   const pushNotification = useGameStore((s) => s.pushNotification)
   const addIngredient = useGameStore((s) => s.addIngredient)
 
-  type ForestIngredient = {
-    id: string
-    ingredient: Ingredient
-    position: Vector2D
-    collected: boolean
-  }
 
-  const [forestIngredients, setForestIngredients] = useState<ForestIngredient[]>([
-    { id: "forest-ing-1", ingredient: "B", position: { x: 300, y: 150 }, collected: false },
-    { id: "forest-ing-2", ingredient: "B", position: { x: 550, y: 400 }, collected: false },
-    { id: "forest-ing-3", ingredient: "A", position: { x: 450, y: 250 }, collected: false },
-    { id: "forest-ing-4", ingredient: "C", position: { x: 320, y: 350 }, collected: false },
-    { id: "forest-ing-5", ingredient: "E", position: { x: 600, y: 120 }, collected: false },
-  ])
-
-  useEffect(() => {
-    const INGREDIENT_SIZE = { width: 40, height: 40 }
-    const hit = forestIngredients.find(
-      (ing) => !ing.collected && intersectsAABB(playerPosition, PLAYER_SIZE, ing.position, INGREDIENT_SIZE)
-    )
-    if (hit) {
-      setForestIngredients((prev) =>
-        prev.map((ing) => (ing.id === hit.id ? { ...ing, collected: true } : ing))
-      )
-      addIngredient(hit.ingredient)
-      pushNotification({
-        kind: "success",
-        message: `¡Has recogido del claro: ${INGREDIENT_NAMES[hit.ingredient]}!`,
-      })
-    }
-  }, [playerPosition, forestIngredients, addIngredient, pushNotification])
 
   // Pausamos el movimiento mientras se carga la mazmorra o el modal de crafteo esta abierto.
   const movementEnabled = !isCraftingOpen && !isGeneratingDungeon
@@ -250,18 +220,7 @@ export function ForestScene() {
           isPlayerNear={isPlayerNearCauldron}
         />
 
-        {/* Ingredientes recolectables en el Bosque */}
-        {forestIngredients.map(
-          (ing) =>
-            !ing.collected && (
-              <IngredientItem
-                key={ing.id}
-                ingredient={ing.ingredient}
-                position={ing.position}
-                size={{ width: 40, height: 40 }}
-              />
-            )
-        )}
+
 
         {/* Jugador */}
         <Player position={playerPosition} size={PLAYER_SIZE} />
