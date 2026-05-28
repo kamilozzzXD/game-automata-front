@@ -15,6 +15,7 @@ import { useGameKeyboard } from "../hooks/useGameKeyboard"
 import { useHotbarControls } from "../hooks/useHotbarControls"
 import { usePlayerMovement } from "../hooks/usePlayerMovement"
 import { generateDungeon } from "../services/api"
+import musicaForestUrl from "../assets/musica-forest.mp3"
 
 const WORLD_SIZE: Size = { width: 960, height: 600 }
 const PLAYER_SIZE: Size = { width: 48, height: 48 }
@@ -82,6 +83,22 @@ export function ForestScene() {
     keysRef,
     enabled: movementEnabled,
   })
+
+  // Reproducción de música de fondo del bosque en bucle.
+  // Se inicia al montar la escena del bosque y se detiene automáticamente al desmontarla.
+  useEffect(() => {
+    const audio = new Audio(musicaForestUrl)
+    audio.loop = true
+    audio.volume = 0.3 // Volumen agradable
+    
+    audio.play().catch((err) => {
+      console.warn("La reproducción de música del bosque fue bloqueada o falló:", err)
+    })
+
+    return () => {
+      audio.pause()
+    }
+  }, [])
 
   // Distancia jugador <-> caldero (matematica simple)
   const isPlayerNearCauldron = useMemo(
