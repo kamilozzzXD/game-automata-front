@@ -57,18 +57,36 @@ function generateHazards(node: DungeonNode): Hazard[] {
   if (node.tipo !== "pasillo" && node.tipo !== "sala") return []
   const list: Hazard[] = []
   const count = 3 // 3 peligros por habitación
-  for (let i = 0; i < count; i++) {
-    const seedX = node.id * 50 + i * 20
-    const seedY = node.id * 50 + i * 20 + 10
-    const seedType = node.id * 50 + i * 20 + 30
+  let attempts = 0
+  
+  while (list.length < count && attempts < 50) {
+    const index = list.length
+    const seedX = node.id * 80 + index * 25 + attempts * 9
+    const seedY = node.id * 80 + index * 25 + attempts * 9 + 10
+    const seedType = node.id * 80 + index * 25 + attempts * 9 + 30
+    attempts++
     
     // Márgenes seguros: x en 250..WORLD_SIZE.width-250, y en 180..WORLD_SIZE.height-180
     const x = 250 + pseudoRandom(seedX) * (WORLD_SIZE.width - 500)
     const y = 180 + pseudoRandom(seedY) * (WORLD_SIZE.height - 360)
-    const type = pseudoRandom(seedType) > 0.5 ? "lava" : "picos"
     
+    // Evitar colisión/superposición (distancia mínima de 90px entre centros)
+    let tooClose = false
+    for (const h of list) {
+      const dx = x - h.position.x
+      const dy = y - h.position.y
+      const dist = Math.sqrt(dx * dx + dy * dy)
+      if (dist < 90) {
+        tooClose = true
+        break
+      }
+    }
+    
+    if (tooClose) continue
+    
+    const type = pseudoRandom(seedType) > 0.5 ? "lava" : "picos"
     list.push({
-      id: `hazard-${node.id}-${i}`,
+      id: `hazard-${node.id}-${index}`,
       type,
       position: { x, y },
       size: { width: 64, height: 64 },
@@ -76,6 +94,7 @@ function generateHazards(node: DungeonNode): Hazard[] {
   }
   return list
 }
+
 
 // ---------------------------------------------------------------------------
 // Modelo de puertas: cada habitacion tiene hasta 4 (left/right/top/bottom).
@@ -2181,11 +2200,16 @@ function HazardTile({
   // La antorcha ilumina 140px, dejamos 160px para el efecto de borde luminoso
   const inLight = dist <= 160
 
+  // Generar un borde de charco orgánico determinista para cada lava basado en su ID/posición
+  const puddleBorderRadius = isLava
+    ? `${35 + (hazard.position.x % 15)}% ${55 + (hazard.position.y % 15)}% ${40 + (hazard.position.x % 20)}% ${50 + (hazard.position.y % 20)}% / ${45 + (hazard.position.y % 15)}% ${45 + (hazard.position.x % 15)}% ${55 + (hazard.position.y % 20)}% ${50 + (hazard.position.x % 20)}%`
+    : "12px" // 12px equivale a rounded-xl
+
   return (
     <div
-      className={`absolute rounded-xl overflow-hidden flex items-center justify-center border ${
+      className={`absolute overflow-hidden flex items-center justify-center border ${
         isLava
-          ? "border-orange-600/60"
+          ? "border-orange-500/80 shadow-[inset_0_0_10px_rgba(124,45,18,0.7)]"
           : "border-slate-800/80"
       }`}
       style={{
@@ -2193,6 +2217,7 @@ function HazardTile({
         top: hazard.position.y,
         width: hazard.size.width,
         height: hazard.size.height,
+        borderRadius: puddleBorderRadius,
         background: isLava
           ? "radial-gradient(circle, #f97316 20%, #ea580c 60%, #7c2d12 100%)"
           : "none",
