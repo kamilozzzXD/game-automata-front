@@ -1505,12 +1505,13 @@ export function DungeonScene() {
             }
           } else {
             if (distToPlayer > BOSS_MIN_DISTANCE_TO_PLAYER) {
-              // Convertimos el target del centro a la esquina sup-izq.
               const target: Vector2D = {
                 x: playerCenter.x - BOSS_SIZE.width / 2,
                 y: playerCenter.y - BOSS_SIZE.height / 2,
               }
-              nextBossPos = stepTowards(cur, target, BOSS_ATTACK_SPEED * speedMult)
+              const currentAttackSpeed = furious ? 2.5 : 1.5;
+
+              nextBossPos = stepTowards(cur, target, currentAttackSpeed * speedMult)
             }
           }
         }

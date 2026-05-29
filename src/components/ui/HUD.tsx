@@ -222,7 +222,7 @@ export function HUD() {
         <p><kbd className="rounded bg-muted px-1 text-foreground">E</kbd> interactuar</p>
         <p><kbd className="rounded bg-muted px-1 text-foreground">I</kbd> pociones</p>
         <p><kbd className="rounded bg-muted px-1 text-foreground">O</kbd> materiales</p>
-        <p><kbd className="rounded bg-muted px-1 text-foreground">Tab</kbd> <kbd className="rounded bg-muted px-1 text-foreground">↑↓</kbd> hotbar</p>
+        <p><kbd className="rounded bg-muted px-1 text-foreground">Tab</kbd> <kbd className="rounded bg-muted px-1 text-foreground"></kbd> hotbar</p>
         <p><kbd className="rounded bg-muted px-1 text-foreground">Q</kbd> usar pocion</p>
         <p><kbd className="rounded bg-muted px-1 text-foreground">J</kbd> disparar</p>
       </div>
