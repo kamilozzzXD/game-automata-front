@@ -802,6 +802,11 @@ export function DungeonScene() {
   const bossPositionRef = useRef<Vector2D>(initialBossPosition)
   bossPositionRef.current = bossPosition
 
+  // Pon estos junto a tus otros useRef
+  const bossCurrentSpeedRef = useRef(2.0)
+  const isMachineGunRef = useRef(false)
+  const nextMachineGunTimeRef = useRef(0)
+  const machineGunEndTimeRef = useRef(0)
   const isSecretRoom = currentNode?.tipo === "sala"
   const secretBossPresent = !!isSecretRoom && !(currentNode?.enemigo_derrotado)
 
@@ -1424,6 +1429,9 @@ export function DungeonScene() {
       if (bossProyectilesRef.current.length > 0) setBossProyectiles([])
       patrolTargetRef.current = null
       lastBossShotAtRef.current = 0
+      // Reiniciamos los estados de la metralleta si salimos de la sala
+      isMachineGunRef.current = false
+      nextMachineGunTimeRef.current = 0
       return
     }
 
@@ -1444,9 +1452,7 @@ export function DungeonScene() {
       if (isAlive) {
         // -------- 1) Movimiento del jefe/mini-jefe segun el estado de Moore --------
         if (state === "A") {
-          // Patrullaje. Si no tenemos objetivo o estamos cerca de el,
-          // elegimos un nuevo punto aleatorio dentro de un radio
-          // BOSS_PATROL_RADIUS, clampeado a los bordes del mundo.
+          // Patrullaje.
           const reached =
             !patrolTargetRef.current ||
             distance(cur, patrolTargetRef.current) <= BOSS_PATROL_REACHED_EPSILON
@@ -1464,13 +1470,10 @@ export function DungeonScene() {
             BOSS_PATROL_SPEED * speedMult,
           )
         } else if (state === "B") {
-          // Buscar: el jefe se queda quieto. El feedback visual de que
-          // "esta buscando" lo da el StateBadge del componente Boss
-          // (icono "!" amarillo + animate-pulse).
+          // Buscar: el jefe se queda quieto.
           patrolTargetRef.current = null
         } else {
-          // C - Atacar. Persigue al jugador hasta una distancia minima
-          // para no encimarse encima de el.
+          // C - Atacar.
           patrolTargetRef.current = null
           const playerCenter = center(snap.playerPosition, PLAYER_SIZE)
           const bossCenter = center(cur, BOSS_SIZE)
@@ -1504,13 +1507,44 @@ export function DungeonScene() {
               }
             }
           } else {
+            // ----------- JEFE PRINCIPAL: MOVIMIENTO Y METRALLETA -----------
+            const nowTime = performance.now()
+
+            // 1. Iniciar el temporizador de metralleta cuando entra en furia por primera vez
+            if (furious && nextMachineGunTimeRef.current === 0) {
+              nextMachineGunTimeRef.current = nowTime + 3000 // Primer ataque en 3s
+            }
+
+            // 2. Control de los estados de la metralleta
+            if (furious) {
+              if (!isMachineGunRef.current && nowTime > nextMachineGunTimeRef.current) {
+                // Iniciar la ráfaga
+                isMachineGunRef.current = true
+                machineGunEndTimeRef.current = nowTime + 2000 // Dura 2 segundos
+                pushNotification({ kind: "error", message: "¡El Jefe está preparando una ráfaga imparable!" })
+              } else if (isMachineGunRef.current && nowTime > machineGunEndTimeRef.current) {
+                // Terminar la ráfaga y calcular la siguiente
+                isMachineGunRef.current = false
+                nextMachineGunTimeRef.current = nowTime + 4000 + Math.random() * 3000 // Próxima entre 4 y 7s
+              }
+            }
+
+            // 3. Aceleración Suave (Lerp)
+            const targetSpeed = furious ? 3.0 : 2.0
+            bossCurrentSpeedRef.current += (targetSpeed - bossCurrentSpeedRef.current) * 0.02
+            let currentAttackSpeed = bossCurrentSpeedRef.current
+
+            // Si está en modo ráfaga, frenarlo a 0.0
+            if (isMachineGunRef.current) {
+              currentAttackSpeed = 0.0
+            }
+
+            // Mover al jefe
             if (distToPlayer > BOSS_MIN_DISTANCE_TO_PLAYER) {
               const target: Vector2D = {
                 x: playerCenter.x - BOSS_SIZE.width / 2,
                 y: playerCenter.y - BOSS_SIZE.height / 2,
               }
-              const currentAttackSpeed = furious ? 2.5 : 1.5;
-
               nextBossPos = stepTowards(cur, target, currentAttackSpeed * speedMult)
             }
           }
@@ -1549,9 +1583,14 @@ export function DungeonScene() {
               }
             }
           } else {
-            if (now - lastBossShotAtRef.current >= BOSS_SHOOT_COOLDOWN_MS) {
+            // ----------- DISPARO DEL JEFE PRINCIPAL -----------
+            // Si es metralleta dispara cada 150ms, sino usa su cooldown normal
+            const currentCooldown = isMachineGunRef.current ? 150 : BOSS_SHOOT_COOLDOWN_MS
+
+            if (now - lastBossShotAtRef.current >= currentCooldown) {
               lastBossShotAtRef.current = now
-              pendingSpawn = buildBossShotAtPlayer(furious, cur, "basic")
+              // Le pasamos el parámetro extra "isMachineGun" para evitar pesados en la ráfaga
+              pendingSpawn = buildBossShotAtPlayer(furious, cur, "basic", isMachineGunRef.current)
             }
           }
         }
@@ -1594,12 +1633,11 @@ export function DungeonScene() {
     }
 
     // Helper: construye un proyectil del jefe apuntando al jugador.
-    // Si esta en Modo Furia, sortea 50/50 basico vs pesado.
-    // No toca el state: solo devuelve el objeto (lo mete stepBossProjectiles).
     function buildBossShotAtPlayer(
       furious: boolean,
       bossC_topleft: Vector2D,
-      projKind: BossProjectileKind = "basic"
+      projKind: BossProjectileKind = "basic",
+      isMachineGun: boolean = false // <--- Agregado parámetro
     ): BossProjectileState | null {
       const playerC = center(
         useGameStore.getState().playerPosition,
@@ -1609,8 +1647,8 @@ export function DungeonScene() {
       const vx = playerC.x - bossC.x
       const vy = playerC.y - bossC.y
       const len = Math.sqrt(vx * vx + vy * vy)
-      // Defensa: si por casualidad coinciden centros (no deberia, hay
-      // BOSS_MIN_DISTANCE_TO_PLAYER), no disparamos.
+
+      // Defensa: si por casualidad coinciden centros, no disparamos.
       if (len === 0) return null
 
       if (projKind === "poison") {
@@ -1626,10 +1664,10 @@ export function DungeonScene() {
         }
       }
 
-      // Modo Furia: 50% Basico, 50% Pesado. Math.random() <= 0.5 da el
-      // mismo resultado que > 0.5 invertido (la spec dice "> 0.5: basico,
-      // <= 0.5: pesado").
-      const useHeavy = furious && Math.random() <= 0.5
+      // LA MAGIA DE LA PROBABILIDAD:
+      // Si está furioso Y NO está en ráfaga (metralleta), hay un 50% de ataque pesado.
+      // Si está en ráfaga, useHeavy es siempre false (solo bolitas rojas).
+      const useHeavy = furious && !isMachineGun && Math.random() <= 0.5
       bossProjectileIdRef.current += 1
       return {
         id: bossProjectileIdRef.current,
@@ -1643,9 +1681,7 @@ export function DungeonScene() {
     }
 
     // Helper: avanza todos los proyectiles del jefe, los descarta si
-    // expiran (con fragmentacion para los pesados) y revisa AABB contra
-    // el jugador. Tambien adjunta `pendingSpawn` (proyectil recien creado
-    // este frame) si lo hay. Solo escribe al state si hubo cambios.
+    // expiran (con fragmentacion para los pesados) y revisa AABB contra el jugador.
     function stepBossProjectiles(
       playerPos: Vector2D,
       pendingSpawn: BossProjectileState | null,
@@ -1653,8 +1689,6 @@ export function DungeonScene() {
       const current = bossProyectilesRef.current
       if (current.length === 0 && !pendingSpawn) return
 
-      // Esquirlas que generara la fragmentacion de los pesados expirados
-      // este frame. Se acumulan y se concatenan al final.
       const esquirlasGeneradas: BossProjectileState[] = []
       const next: BossProjectileState[] = []
 
@@ -1676,9 +1710,6 @@ export function DungeonScene() {
         const ny = p.y + p.dy * speed
         const nDist = p.distanciaRecorrida + speed
 
-        // Salida del mundo. Para los basicos -> simplemente desaparece.
-        // Para los pesados -> tambien desaparece SIN fragmentar (porque
-        // las esquirlas saldrian fuera de pantalla y serian invisibles).
         const fueraDelMundo =
           nx < -projSize.width ||
           nx > WORLD_SIZE.width + projSize.width ||
@@ -1686,11 +1717,8 @@ export function DungeonScene() {
           ny > WORLD_SIZE.height + projSize.height
         if (fueraDelMundo) continue
 
-        // Expiracion por distancia recorrida.
         if (nDist > maxDist) {
           if (p.kind === "heavy") {
-            // FRAGMENTACION: en las coordenadas exactas del proyectil
-            // pesado expirado, instanciamos 8 proyectiles basicos.
             for (const dir of ESQUIRLAS_8_DIR) {
               bossProjectileIdRef.current += 1
               esquirlasGeneradas.push({
@@ -1707,25 +1735,21 @@ export function DungeonScene() {
           continue
         }
 
-        // Hit: AABB del proyectil vs AABB del jugador.
         const projPos: Vector2D = {
           x: nx - projSize.width / 2,
           y: ny - projSize.height / 2,
         }
         if (intersectsAABB(projPos, projSize, playerPos, PLAYER_SIZE)) {
-          // P9: Escudo de Energía - invencibilidad temporal, ignora el impacto
           const isShielded = useGameStore.getState().isShieldActive
           if (isShielded) continue
 
-          // Refactor 3.1: El daño al jugador también pasa por la Máquina de
-          // Turing del backend para mantener consistencia académica.
           const damage = p.kind === "heavy"
             ? BOSS_HEAVY_PROJECTILE_DAMAGE
             : p.kind === "poison"
               ? 15
               : BOSS_BASIC_PROJECTILE_DAMAGE
           const currentPlayerHp = useGameStore.getState().playerHp
-          // Solo procesamos si el jugador sigue vivo
+
           if (currentPlayerHp > 0) {
             void combatHit({
               hp_actual: currentPlayerHp,
@@ -1739,10 +1763,7 @@ export function DungeonScene() {
                   message: "¡La pócima de veneno de la Bruja te impacta! -15 HP (Sustracción propia de Turing)",
                 })
               }
-              // Game Over: si hp_resultante === 0, el jugador murió
               if (res.hp_resultante === 0) {
-                // La pantalla de muerte maneja el retorno.
-                // Limpiamos la IA del jefe para evitar daño residual mientras se ve la pantalla.
                 useGameStore.getState().resetBoss()
                 setBossProyectiles([])
               }
@@ -1756,15 +1777,10 @@ export function DungeonScene() {
         next.push({ ...p, x: nx, y: ny, distanciaRecorrida: nDist })
       }
 
-      // Concatenamos: proyectiles que sobreviven + esquirlas generadas
-      // por pesados expirados + el spawn de este frame (si hubo disparo).
       const result: BossProjectileState[] = next
       if (esquirlasGeneradas.length > 0) result.push(...esquirlasGeneradas)
       if (pendingSpawn) result.push(pendingSpawn)
 
-      // Solo actualizamos si cambio algo (longitud o referencia de los
-      // elementos). Evita re-renders en frames donde nada se movio
-      // (por ejemplo, cuando el array esta vacio).
       if (
         result.length !== current.length ||
         result.some((p, i) => p !== current[i])
@@ -1775,8 +1791,6 @@ export function DungeonScene() {
 
     rafId = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(rafId)
-    // bossPresent / secretBossPresent reinicia todo el sistema.
-    // NO ponemos bossState aqui: lo leemos via getState() en cada frame.
   }, [bossPresent, secretBossPresent])
 
   // ---------------------------------------------------------------------------
