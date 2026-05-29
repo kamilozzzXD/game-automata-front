@@ -7,11 +7,22 @@ export function Notifications() {
 
   useEffect(() => {
     if (allNotifications.length === 0) return
-    // Timeout reducido a la mitad (3s -> 1.5s) para que la pila de notificaciones
-    // no sature la pantalla cuando el jugador hace clics rapidos en el caldero.
+
+    // ¡La solución aquí! Si hay más de 4 notificaciones en el store,
+    // eliminamos inmediatamente las más viejas (las primeras del array)
+    // para dar paso a las nuevas sin esperar a que termine su temporizador.
+    if (allNotifications.length > 4) {
+      const excessCount = allNotifications.length - 4
+      for (let i = 0; i < excessCount; i++) {
+        remove(allNotifications[i].id)
+      }
+      return
+    }
+
     const timers = allNotifications.map((n) =>
       window.setTimeout(() => remove(n.id), 1500),
     )
+
     return () => timers.forEach(clearTimeout)
   }, [allNotifications, remove])
 
@@ -24,17 +35,16 @@ export function Notifications() {
     // ("Ingrediente anadido" / "Mezcla fallida") se cargaban debajo
     // del modal por la combinacion de stacking context + backdrop-blur.
     // Subir a z-[100] garantiza que el contenedor no queda atrapado.
-    <div className="pointer-events-none fixed bottom-6 left-1/2 z-[100] flex -translate-x-1/2 flex-col items-center gap-2">
+    <div className="pointer-events-none absolute bottom-4 left-1/2 z-[100] flex -translate-x-1/2 flex-col items-center gap-2">
       {displayedNotifications.map((n) => (
         <div
           key={n.id}
-          className={`pointer-events-auto rounded-md border px-4 py-2 text-sm font-medium shadow-lg backdrop-blur ${
-            n.kind === "success"
-              ? "border-primary/50 bg-primary/20 text-primary"
-              : n.kind === "error"
-                ? "border-destructive/50 bg-destructive/20 text-destructive"
-                : "border-border bg-card text-card-foreground"
-          }`}
+          className={`pointer-events-auto rounded-md border px-4 py-2 text-sm font-medium shadow-lg backdrop-blur ${n.kind === "success"
+            ? "border-primary/50 bg-primary/20 text-primary"
+            : n.kind === "error"
+              ? "border-destructive/50 bg-destructive/20 text-destructive"
+              : "border-border bg-card text-card-foreground"
+            }`}
         >
           {n.message}
         </div>

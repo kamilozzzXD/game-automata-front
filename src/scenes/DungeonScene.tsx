@@ -2016,8 +2016,8 @@ export function DungeonScene() {
           <div className="pointer-events-none absolute bottom-12 left-1/2 z-30 flex -translate-x-1/2 flex-col items-center gap-2">
             <div
               className={`rounded-md border px-3 py-1.5 text-center shadow backdrop-blur ${isBossFurious
-                  ? "border-purple-500/70 bg-background/90"
-                  : "border-red-500/40 bg-background/85"
+                ? "border-purple-500/70 bg-background/90"
+                : "border-red-500/40 bg-background/85"
                 }`}
             >
               <p className="flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-wider text-red-300">
@@ -2055,9 +2055,10 @@ export function DungeonScene() {
             </div>
           </div>
         )}
+        <Notifications />
       </div>
 
-      <Notifications />
+
     </main>
   )
 }
@@ -2173,8 +2174,8 @@ function HazardTile({
   return (
     <div
       className={`absolute overflow-hidden flex items-center justify-center border ${isLava
-          ? "border-orange-500/80 shadow-[inset_0_0_10px_rgba(124,45,18,0.7)]"
-          : "border-slate-800/80"
+        ? "border-orange-500/80 shadow-[inset_0_0_10px_rgba(124,45,18,0.7)]"
+        : "border-slate-800/80"
         }`}
       style={{
         left: hazard.position.x,

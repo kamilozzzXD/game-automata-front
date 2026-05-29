@@ -257,9 +257,10 @@ export function ForestScene() {
 
         {/* Modales */}
         <CraftingModal />
+        <Notifications />
       </div>
 
-      <Notifications />
+      
     </main>
   )
 }
