@@ -2,18 +2,20 @@ import { useEffect } from "react"
 import { useGameStore } from "../../core/gameStore"
 
 export function Notifications() {
-  const notifications = useGameStore((s) => s.notifications)
+  const allNotifications = useGameStore((s) => s.notifications)
   const remove = useGameStore((s) => s.removeNotification)
 
   useEffect(() => {
-    if (notifications.length === 0) return
+    if (allNotifications.length === 0) return
     // Timeout reducido a la mitad (3s -> 1.5s) para que la pila de notificaciones
     // no sature la pantalla cuando el jugador hace clics rapidos en el caldero.
-    const timers = notifications.map((n) =>
+    const timers = allNotifications.map((n) =>
       window.setTimeout(() => remove(n.id), 1500),
     )
     return () => timers.forEach(clearTimeout)
-  }, [notifications, remove])
+  }, [allNotifications, remove])
+
+  const displayedNotifications = allNotifications.slice(0, 4)
 
   return (
     // z-[100] para flotar SIEMPRE por encima del modal de crafteo (z-50),
@@ -23,7 +25,7 @@ export function Notifications() {
     // del modal por la combinacion de stacking context + backdrop-blur.
     // Subir a z-[100] garantiza que el contenedor no queda atrapado.
     <div className="pointer-events-none fixed bottom-6 left-1/2 z-[100] flex -translate-x-1/2 flex-col items-center gap-2">
-      {notifications.map((n) => (
+      {displayedNotifications.map((n) => (
         <div
           key={n.id}
           className={`pointer-events-auto rounded-md border px-4 py-2 text-sm font-medium shadow-lg backdrop-blur ${
