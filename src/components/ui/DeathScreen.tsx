@@ -8,14 +8,12 @@ export function DeathScreen() {
   const setPlayerHp = useGameStore((s) => s.setPlayerHp)
   const setPlayerPosition = useGameStore((s) => s.setPlayerPosition)
   const setPlayerInvisible = useGameStore((s) => s.setPlayerInvisible)
-  const clearNotifications = useGameStore((s) => s.clearNotifications)
 
   useEffect(() => {
     if (playerHp > 0) return
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Enter") {
-        clearNotifications()
         setCurrentScene("forest")
         setPlayerPosition({ x: 230, y: 260 })
         setPlayerInvisible(false)
@@ -25,7 +23,7 @@ export function DeathScreen() {
 
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [playerHp, setCurrentScene, setPlayerHp, setPlayerPosition, setPlayerInvisible, clearNotifications])
+  }, [playerHp, setCurrentScene, setPlayerHp, setPlayerPosition, setPlayerInvisible])
 
   if (playerHp > 0) return null
 

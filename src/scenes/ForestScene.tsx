@@ -15,7 +15,6 @@ import { useGameKeyboard } from "../hooks/useGameKeyboard"
 import { useHotbarControls } from "../hooks/useHotbarControls"
 import { usePlayerMovement } from "../hooks/usePlayerMovement"
 import { generateDungeon } from "../services/api"
-import musicaForestUrl from "../assets/musica-forest.mp3"
 
 const WORLD_SIZE: Size = { width: 960, height: 600 }
 const PLAYER_SIZE: Size = { width: 48, height: 48 }
@@ -61,18 +60,70 @@ export function ForestScene() {
   const pushNotification = useGameStore((s) => s.pushNotification)
   const addIngredient = useGameStore((s) => s.addIngredient)
 
+  type ForestIngredient = {
+    id: string
+    ingredient: Ingredient
+    position: Vector2D
+    collected: boolean
+  }
 
+  const [forestIngredients, setForestIngredients] = useState<ForestIngredient[]>([
+    { id: "forest-ing-1", ingredient: "B", position: { x: 300, y: 150 }, collected: false },
+    { id: "forest-ing-2", ingredient: "B", position: { x: 550, y: 400 }, collected: false },
+    { id: "forest-ing-3", ingredient: "A", position: { x: 450, y: 250 }, collected: false },
+    { id: "forest-ing-4", ingredient: "C", position: { x: 320, y: 350 }, collected: false },
+    { id: "forest-ing-5", ingredient: "E", position: { x: 600, y: 120 }, collected: false },
+  ])
+
+  useEffect(() => {
+    const INGREDIENT_SIZE = { width: 40, height: 40 }
+    const hit = forestIngredients.find(
+      (ing) => !ing.collected && intersectsAABB(playerPosition, PLAYER_SIZE, ing.position, INGREDIENT_SIZE)
+    )
+    if (hit) {
+      setForestIngredients((prev) =>
+        prev.map((ing) => (ing.id === hit.id ? { ...ing, collected: true } : ing))
+      )
+      addIngredient(hit.ingredient)
+      pushNotification({
+        kind: "success",
+        message: `¡Has recogido del claro: ${INGREDIENT_NAMES[hit.ingredient]}!`,
+      })
+    }
+  }, [playerPosition, forestIngredients, addIngredient, pushNotification])
 
   // Pausamos el movimiento mientras se carga la mazmorra o el modal de crafteo esta abierto.
   const movementEnabled = !isCraftingOpen && !isGeneratingDungeon
   const keysRef = useGameKeyboard(movementEnabled)
 
-  // Hotbar (Sprint 4): activo siempre que no haya un modal bloqueante.
-  // En el claro del bosque, las pociones no deben ser consumidas ni usadas.
+  // Hotbar (Sprint 4): activo mientras no haya un modal bloqueante.
+  // En el bosque no hay jefe, asi que "usar" una pocion solo notifica.
+  const setPlayerInvisible = useGameStore((s) => s.setPlayerInvisible)
+  const onUsePotion = useCallback(
+    (id: PotionId) => {
+      // Solo P4 hace algo visible por ahora (Pocion de Invisibilidad).
+      // El resto se consume y solo se notifica que se uso (no implementadas).
+      if (id === "P4") {
+        setPlayerInvisible(true)
+        pushNotification({
+          kind: "success",
+          message: "Has bebido la Pocion de Invisibilidad. Te vuelves translucido.",
+        })
+        // Auto-expira a los 6s. En el bosque no afecta al gameplay,
+        // pero queremos que el efecto sea consistente entre escenas.
+        window.setTimeout(() => setPlayerInvisible(false), 6000)
+        return
+      }
+      pushNotification({
+        kind: "info",
+        message: `Has usado: ${POTION_NAMES[id]} (sin efecto activo aun).`,
+      })
+    },
+    [setPlayerInvisible, pushNotification],
+  )
   useHotbarControls({
     enabled: movementEnabled,
-    allowUse: false,
-    onUsePotion: () => {},
+    onUsePotion,
   })
 
   usePlayerMovement({
@@ -83,22 +134,6 @@ export function ForestScene() {
     keysRef,
     enabled: movementEnabled,
   })
-
-  // Reproducción de música de fondo del bosque en bucle.
-  // Se inicia al montar la escena del bosque y se detiene automáticamente al desmontarla.
-  useEffect(() => {
-    const audio = new Audio(musicaForestUrl)
-    audio.loop = true
-    audio.volume = 0.3 // Volumen agradable
-    
-    audio.play().catch((err) => {
-      console.warn("La reproducción de música del bosque fue bloqueada o falló:", err)
-    })
-
-    return () => {
-      audio.pause()
-    }
-  }, [])
 
   // Distancia jugador <-> caldero (matematica simple)
   const isPlayerNearCauldron = useMemo(
@@ -237,7 +272,18 @@ export function ForestScene() {
           isPlayerNear={isPlayerNearCauldron}
         />
 
-
+        {/* Ingredientes recolectables en el Bosque */}
+        {forestIngredients.map(
+          (ing) =>
+            !ing.collected && (
+              <IngredientItem
+                key={ing.id}
+                ingredient={ing.ingredient}
+                position={ing.position}
+                size={{ width: 40, height: 40 }}
+              />
+            )
+        )}
 
         {/* Jugador */}
         <Player position={playerPosition} size={PLAYER_SIZE} />

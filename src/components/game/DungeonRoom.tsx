@@ -2,11 +2,11 @@ import type { CSSProperties } from "react"
 import {
   //GiOpenTreasureChest,
   GiPortal,
+  GiSkullCrossedBones,
   GiTorch,
 } from "react-icons/gi"
 import type { DungeonNodeType } from "../../types/dungeon"
 import type { Size } from "../../types/game"
-import amordaImg from "../../assets/amorda.png"
 
 type Props = {
   type: DungeonNodeType
@@ -187,7 +187,10 @@ function SalaDecor({ worldSize }: { worldSize: Size }) {
 // ---------------------------------------------------------------------------
 function JefeDecor({ worldSize }: { worldSize: Size }) {
   const corners = [
-    { left: worldSize.width - 144, top: worldSize.height - 144 },
+    { left: 24, top: 24 },
+    { left: worldSize.width - 84, top: 24 },
+    { left: 24, top: worldSize.height - 84 },
+    { left: worldSize.width - 84, top: worldSize.height - 84 },
   ]
   return (
     <>
@@ -202,16 +205,11 @@ function JefeDecor({ worldSize }: { worldSize: Size }) {
       />
 
       {corners.map((c, i) => (
-        <img
+        <GiSkullCrossedBones
           key={i}
-          src={amordaImg}
-          alt="Decoración Amorda"
-          className="absolute drop-shadow-[0_0_10px_rgba(220,38,38,0.7)] object-contain"
-          style={{
-            ...c,
-            width: "120px",
-            height: "120px",
-          }}
+          className="absolute text-red-300/70 drop-shadow-[0_0_10px_rgba(220,38,38,0.7)]"
+          size={60}
+          style={c}
           aria-hidden
         />
       ))}

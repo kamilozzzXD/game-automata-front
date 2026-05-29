@@ -20,7 +20,6 @@ import { PlayerHealthBar } from "../components/ui/PlayerHealthBar"
 import { HUD } from "../components/ui/HUD"
 import { Notifications } from "../components/ui/Notifications"
 import { DUNGEON_NODE_NAMES, DUNGEON_NODE_DESCRIPTIONS, POTION_NAMES, INGREDIENT_NAMES } from "../core/dictionary"
-import { POTION_DURATIONS, POTION_EFFECT_VALUES, COMBAT_CONFIG } from "../core/diccionario"
 import { useGameStore } from "../core/gameStore"
 import { center, distance, intersectsAABB, isWithinRadius } from "../core/geometry"
 import { useGameKeyboard } from "../hooks/useGameKeyboard"
@@ -31,7 +30,6 @@ import { parseBossState } from "../types/boss"
 import type { BossAction, BossState, BossStimulus } from "../types/boss"
 import type { DungeonNode } from "../types/dungeon"
 import type { Ingredient, Interactable, PotionId, Size, Vector2D } from "../types/game"
-import musicaUrl from "../assets/musica.mp3"
 
 const WORLD_SIZE: Size = { width: 960, height: 600 }
 const PLAYER_SIZE: Size = { width: 48, height: 48 }
@@ -60,18 +58,18 @@ function generateHazards(node: DungeonNode): Hazard[] {
   const list: Hazard[] = []
   const count = 3 // 3 peligros por habitación
   let attempts = 0
-
+  
   while (list.length < count && attempts < 50) {
     const index = list.length
     const seedX = node.id * 80 + index * 25 + attempts * 9
     const seedY = node.id * 80 + index * 25 + attempts * 9 + 10
     const seedType = node.id * 80 + index * 25 + attempts * 9 + 30
     attempts++
-
+    
     // Márgenes seguros: x en 250..WORLD_SIZE.width-250, y en 180..WORLD_SIZE.height-180
     const x = 250 + pseudoRandom(seedX) * (WORLD_SIZE.width - 500)
     const y = 180 + pseudoRandom(seedY) * (WORLD_SIZE.height - 360)
-
+    
     // Evitar colisión/superposición (distancia mínima de 90px entre centros)
     let tooClose = false
     for (const h of list) {
@@ -83,9 +81,9 @@ function generateHazards(node: DungeonNode): Hazard[] {
         break
       }
     }
-
+    
     if (tooClose) continue
-
+    
     const type = pseudoRandom(seedType) > 0.5 ? "lava" : "picos"
     list.push({
       id: `hazard-${node.id}-${index}`,
@@ -224,27 +222,27 @@ function getBossPosition(backDir: DoorDir | null): Vector2D {
 }
 // Umbrales de deteccion (px). Calculo: distancia euclidiana entre centros
 // del jugador y del jefe.
-const VISION_RADIUS = COMBAT_CONFIG.VISION_RADIUS // dentro de este radio -> estimulo "v" (vision)
-const NOISE_RADIUS = COMBAT_CONFIG.NOISE_RADIUS // dentro de este radio (y fuera del de vision) -> "r"
+const VISION_RADIUS = 130 // dentro de este radio -> estimulo "v" (vision)
+const NOISE_RADIUS = 260 // dentro de este radio (y fuera del de vision) -> "r"
 // Periodo del polling de la IA. No tiene sentido spamear /api/boss-action
 // en cada frame; ~600ms da feedback rapido sin saturar el backend.
-const BOSS_TICK_MS = COMBAT_CONFIG.BOSS_TICK_MS
+const BOSS_TICK_MS = 600
 // Duracion del efecto de invisibilidad (ms). Se consume 1 unidad de P4.
-const INVISIBILITY_MS = POTION_DURATIONS.INVISIBILITY
+const INVISIBILITY_MS = 6000
 // Tarea 3.3: curación de las pociones P1 y P5.
-const POTION_P1_HEAL = POTION_EFFECT_VALUES.P1_HEAL  // Poción Menor de Curación
-const POTION_P5_HEAL = POTION_EFFECT_VALUES.P5_HEAL  // Poción de Curación Mayor
+const POTION_P1_HEAL = 25  // Poción Menor de Curación
+const POTION_P5_HEAL = 50  // Poción de Curación Mayor
 // Duraciones de los efectos de cada poción activa (ms).
-const POTION_AIM_MS = POTION_DURATIONS.AIM       // P2: Aceite de Puntería
-const POTION_SPEED_MS = POTION_DURATIONS.SPEED     // P6: Velocidad de Movimiento
-const POTION_MULTISHOT_MS = POTION_DURATIONS.MULTISHOT // P7: Suero de Disparo Múltiple
-const POTION_REFLEX_MS = POTION_DURATIONS.REFLEX    // P8: Tónico de Hiper-Reflejos
-const POTION_SHIELD_MS = POTION_DURATIONS.SHIELD    // P9: Escudo de Energía
-const POTION_CADENCE_MS = POTION_DURATIONS.CADENCE   // P10: Brebaje de Cadencia Extrema
+const POTION_AIM_MS = 8000       // P2: Aceite de Puntería
+const POTION_SPEED_MS = 6000     // P6: Velocidad de Movimiento
+const POTION_MULTISHOT_MS = 8000 // P7: Suero de Disparo Múltiple
+const POTION_REFLEX_MS = 8000    // P8: Tónico de Hiper-Reflejos
+const POTION_SHIELD_MS = 5000    // P9: Escudo de Energía
+const POTION_CADENCE_MS = 5000   // P10: Brebaje de Cadencia Extrema
 // Factor de aumento de daño con Aceite de Puntería.
-const AIM_POTION_DAMAGE_MULT = POTION_EFFECT_VALUES.AIM_DAMAGE_MULT
+const AIM_POTION_DAMAGE_MULT = 1.5
 // Multiplicador de velocidad de movimiento con P6.
-export const SPEED_POTION_MULT = POTION_EFFECT_VALUES.SPEED_MULT
+export const SPEED_POTION_MULT = 1.6
 
 // ---------------------------------------------------------------------------
 // Tarea 3.1 - Configuracion del sistema de combate del jugador.
@@ -261,9 +259,9 @@ const PROJECTILE_SPEED = 6
 const PROJECTILE_MAX_DISTANCE = 400
 // Cooldown entre disparos para evitar que mantener J pulsada genere
 // 60 proyectiles por segundo.
-const SHOOT_COOLDOWN_MS = COMBAT_CONFIG.SHOOT_COOLDOWN_MS
+const SHOOT_COOLDOWN_MS = 180
 // Tarea 3.3: daño que inflige el proyectil del jugador al jefe.
-const PLAYER_PROJECTILE_DAMAGE = COMBAT_CONFIG.PLAYER_PROJECTILE_DAMAGE
+const PLAYER_PROJECTILE_DAMAGE = 10
 // Fase 4 (3.2): distancia máxima para detectar "near miss" (proyectil que
 // pasa cerca del jefe sin impactar). Esto dispara el estímulo "h".
 const BOSS_NEAR_MISS_THRESHOLD = 40
@@ -411,8 +409,6 @@ export function DungeonScene() {
   const pushNotification = useGameStore((s) => s.pushNotification)
   const collectDungeonIngredients = useGameStore((s) => s.collectDungeonIngredients)
   const claimSecretRoomPotions = useGameStore((s) => s.claimSecretRoomPotions)
-  const playerHp = useGameStore((s) => s.playerHp)
-  const isVictoryAchieved = useGameStore((s) => s.isVictoryAchieved)
 
   // Sprint 4 - Estado del jefe (Maquina de Moore) e invisibilidad
   const bossState = useGameStore((s) => s.bossState)
@@ -452,26 +448,6 @@ export function DungeonScene() {
   // Control de teletransporte para el Fantasma
   const lastGhostTeleportRef = useRef<number>(0)
 
-  // Reproducción de música de fondo de la mazmorra en bucle.
-  // Se apaga automáticamente en caso de muerte (playerHp === 0) o al salir de la escena.
-  useEffect(() => {
-    const audio = new Audio(musicaUrl)
-    audio.loop = true
-    audio.volume = 0.3 // Volumen agradable
-
-    if (playerHp > 0) {
-      audio.play().catch((err) => {
-        console.warn("La reproducción de música fue bloqueada o falló:", err)
-      })
-    } else {
-      audio.pause()
-    }
-
-    return () => {
-      audio.pause()
-    }
-  }, [playerHp === 0])
-
   // Cada vez que llega una mazmorra nueva: reseteamos el cache, spawneamos
   // en el centro del nodo "inicio" y reservamos la pared izquierda para el
   // portal de salida (asi nunca colisiona con una puerta-hijo).
@@ -492,7 +468,7 @@ export function DungeonScene() {
   }, [dungeon, salaActualId, setPlayerPosition])
 
   // Movimiento del jugador (mismo hook que el bosque).
-  const movementEnabled = salaActualId !== null && !isGenerating && playerHp > 0 && !isVictoryAchieved
+  const movementEnabled = salaActualId !== null && !isGenerating
   const keysRef = useGameKeyboard(movementEnabled)
   usePlayerMovement({
     position: playerPosition,
@@ -593,35 +569,35 @@ export function DungeonScene() {
     if (currentNode.ingredientes && currentNode.ingredientes.length > 0) {
       const remaining: (Ingredient | null)[] = [...currentNode.ingredientes]
       const collected: Ingredient[] = []
-
+      
       currentNode.ingredientes.forEach((ing, idx) => {
         if (!ing) return
-
+        
         const seedX = currentNode.id * 100 + idx
         const seedY = currentNode.id * 100 + idx + 50
         const x = 150 + pseudoRandom(seedX) * (WORLD_SIZE.width - 300)
         const y = 150 + pseudoRandom(seedY) * (WORLD_SIZE.height - 300)
-
+        
         const ingPos = { x, y }
         if (intersectsAABB(playerPosition, PLAYER_SIZE, ingPos, INGREDIENT_SIZE)) {
           collected.push(ing)
           remaining[idx] = null
         }
       })
-
+      
       if (collected.length > 0) {
         collectDungeonIngredients(currentNode.id, collected, remaining)
-
+        
         // Contar frecuencias para el mensaje
         const counts = collected.reduce((acc, i) => {
           acc[i] = (acc[i] || 0) + 1
           return acc
         }, {} as Partial<Record<Ingredient, number>>)
-
+        
         const summary = Object.entries(counts)
           .map(([k, v]) => `${INGREDIENT_NAMES[k as Ingredient]} x${v}`)
           .join(", ")
-
+          
         pushNotification({
           kind: "info",
           message: `Has recogido materiales: ${summary}`,
@@ -637,7 +613,7 @@ export function DungeonScene() {
         x: WORLD_SIZE.width - 180 + 20,
         y: 60 + 20,
       }
-
+      
       if (intersectsAABB(playerPosition, PLAYER_SIZE, chestPos, chestSize)) {
         // Aseguramos exactamente 5 Mezclas Volátiles (P3) en el botín
         const generatedPotions: PotionId[] = ["P3", "P3", "P3", "P3", "P3"]
@@ -647,18 +623,18 @@ export function DungeonScene() {
         for (let i = 0; i < amount; i++) {
           generatedPotions.push(allPotions[Math.floor(Math.random() * allPotions.length)])
         }
-
+        
         claimSecretRoomPotions(currentNode.id, generatedPotions)
-
+        
         const counts = generatedPotions.reduce((acc, p) => {
           acc[p] = (acc[p] || 0) + 1
           return acc
         }, {} as Partial<Record<PotionId, number>>)
-
+        
         const summary = Object.entries(counts)
           .map(([k, v]) => `${POTION_NAMES[k as PotionId]} x${v}`)
           .join(", ")
-
+          
         pushNotification({
           kind: "success",
           message: `Has encontrado un tesoro mágico: ${summary}`,
@@ -754,7 +730,7 @@ export function DungeonScene() {
   // para que no quede sobre el (y dispare otra vez la interaccion). Tambien
   // apagamos el efecto de invisibilidad y reseteamos la vida del jugador.
   const setPlayerHp = useGameStore((s) => s.setPlayerHp)
-
+  
   function exitDungeon() {
     setCurrentScene("forest")
     setPlayerPosition({ x: 230, y: 260 })
@@ -781,7 +757,28 @@ export function DungeonScene() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isInInicio, isPlayerNearExitPortal, isGenerating])
 
-
+  // Generar otra mazmorra sin abandonar la escena (regenera in-situ).
+  async function regenerate() {
+    if (isGenerating) return
+    setIsGenerating(true)
+    setKeySpawned(false)
+    setKeyCollected(false)
+    // Forzamos el reset de salaActualId para que el useEffect de inicialización se ejecute
+    setSalaActualId(null)
+    try {
+      const res = await generateDungeon()
+      setCurrentDungeon(res)
+      pushNotification({ kind: "info", message: res.mensaje_ui })
+    } catch (err) {
+      console.error("[v0] Error regenerando mazmorra", err)
+      pushNotification({
+        kind: "error",
+        message: "No se pudo invocar otra mazmorra.",
+      })
+    } finally {
+      setIsGenerating(false)
+    }
+  }
 
   const isBossRoom = currentNode?.tipo === "jefe"
   const hasNoChildren = currentNode && currentNode.conexiones.length === 0
@@ -815,7 +812,7 @@ export function DungeonScene() {
   useEffect(() => {
     setBossPosition(initialBossPosition)
     bossPositionRef.current = initialBossPosition
-
+    
     setMiniBossPosition(initialBossPosition)
     miniBossPositionRef.current = initialBossPosition
     resetMiniBoss()
@@ -891,7 +888,7 @@ export function DungeonScene() {
     }
   }, [bossPresent, resetBoss])
 
-
+  const playerHp = useGameStore((s) => s.playerHp)
   useEffect(() => {
     if (playerHp === 0) {
       setKeySpawned(false)
@@ -1036,8 +1033,8 @@ export function DungeonScene() {
         }
         const pCenter = center(snap.playerPosition, PLAYER_SIZE)
         const dirs = [
-          { dx: 0, dy: -1 }, { dx: 0, dy: 1 }, { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
-          { dx: 0.707, dy: -0.707 }, { dx: -0.707, dy: -0.707 }, { dx: 0.707, dy: 0.707 }, { dx: -0.707, dy: 0.707 }
+          {dx:0,dy:-1},{dx:0,dy:1},{dx:1,dy:0},{dx:-1,dy:0},
+          {dx:0.707,dy:-0.707},{dx:-0.707,dy:-0.707},{dx:0.707,dy:0.707},{dx:-0.707,dy:0.707}
         ]
         setProyectiles((prev) => [
           ...prev,
@@ -1243,7 +1240,7 @@ export function DungeonScene() {
           x: nx - PROJECTILE_SIZE.width / 2,
           y: ny - PROJECTILE_SIZE.height / 2,
         }
-
+        
         let targetPos: Vector2D | null = null
         let targetSize = BOSS_SIZE
         if (bossPresent) targetPos = bossPositionRef.current
@@ -1332,7 +1329,7 @@ export function DungeonScene() {
 
         // Near miss check (Solo para el Jefe Principal de momento)
         let didTriggerNearMiss = p.triggeredNearMiss ?? false
-
+        
         if (!didTriggerNearMiss && targetPos && bossPresent) {
           const bossCenter = center(bossPos, bossSize)
           const projCenter: Vector2D = { x: nx, y: ny }
@@ -1340,7 +1337,7 @@ export function DungeonScene() {
           // El umbral es el radio del jefe (mitad de la diagonal aprox) + margen.
           const bossRadius = Math.max(bossSize.width, bossSize.height) / 2
           const nearMissThreshold = bossRadius + BOSS_NEAR_MISS_THRESHOLD
-
+          
           if (distToBoss < nearMissThreshold) {
             didTriggerNearMiss = true
             // El proyectil pasó muy cerca: despertar al jefe si no está en C.
@@ -1487,9 +1484,9 @@ export function DungeonScene() {
               const targetY = playerCenter.y + Math.sin(angle) * radius - BOSS_SIZE.height / 2
               const clampedX = Math.max(BOSS_WORLD_MARGIN, Math.min(WORLD_SIZE.width - BOSS_SIZE.width - BOSS_WORLD_MARGIN, targetX))
               const clampedY = Math.max(BOSS_WORLD_MARGIN, Math.min(WORLD_SIZE.height - BOSS_SIZE.height - BOSS_WORLD_MARGIN, targetY))
-
+              
               nextBossPos = { x: clampedX, y: clampedY }
-
+              
               pushNotification({
                 kind: "info",
                 message: "¡El Fantasma se desvanece y se teletransporta!",
@@ -1779,9 +1776,14 @@ export function DungeonScene() {
   }, [bossPresent, secretBossPresent])
 
   // ---------------------------------------------------------------------------
-  // Modo Furia del Jefe (activado automáticamente cuando pierde su primera vida).
+  // Debug toggle del Modo Furia.
+  // Tarea 3.2 expone esta funcion para que el dev de Tarea 3.3 (HP) la
+  // pueda invocar al perder la primera barra de vida del jefe. Se llama
+  // tambien desde el boton "Activar Furia" del panel de la sala del jefe.
   // ---------------------------------------------------------------------------
   const isBossFurious = useGameStore((s) => s.isBossFurious)
+  const activarModoFuria = useGameStore((s) => s.activarModoFuria)
+  const desactivarModoFuria = useGameStore((s) => s.desactivarModoFuria)
 
   return (
     <main className="flex min-h-screen w-full items-center justify-center bg-background p-4">
@@ -1794,16 +1796,14 @@ export function DungeonScene() {
           <DungeonRoom type={currentNode.tipo} worldSize={WORLD_SIZE} />
         )}
 
-        {/* Capa de Oscuridad con Spotlight de Antorcha (z-index: 12) - Se oculta únicamente en la sala del jefe final */}
-        {!bossPresent && (
-          <div
-            className="pointer-events-none absolute inset-0"
-            style={{
-              background: `radial-gradient(circle 140px at ${playerPosition.x + PLAYER_SIZE.width / 2}px ${playerPosition.y + PLAYER_SIZE.height / 2}px, transparent 20%, rgba(3, 7, 18, 0.98) 100%)`,
-              zIndex: 12,
-            }}
-          />
-        )}
+        {/* Capa de Oscuridad con Spotlight de Antorcha (z-index: 12) */}
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background: `radial-gradient(circle 140px at ${playerPosition.x + PLAYER_SIZE.width / 2}px ${playerPosition.y + PLAYER_SIZE.height / 2}px, transparent 20%, rgba(3, 7, 18, 0.98) 100%)`,
+            zIndex: 12,
+          }}
+        />
 
         {/* Portal de salida (solo en la sala inicial). Sustituye al boton
             de debug que rompia la inmersion. */}
@@ -1894,12 +1894,12 @@ export function DungeonScene() {
         {/* Ingredientes esparcidos por la sala (si los hay) */}
         {currentNode?.ingredientes && currentNode.ingredientes.map((ing, idx) => {
           if (!ing) return null
-
+          
           const seedX = currentNode.id * 100 + idx
           const seedY = currentNode.id * 100 + idx + 50
           const x = 150 + pseudoRandom(seedX) * (WORLD_SIZE.width - 300)
           const y = 150 + pseudoRandom(seedY) * (WORLD_SIZE.height - 300)
-
+          
           return (
             <IngredientItem
               key={`${currentNode.id}-${idx}`}
@@ -1990,8 +1990,9 @@ export function DungeonScene() {
             Tarea 3.3: cuando está el jefe, la etiqueta se mueve más abajo
             para no tapar la barra de vida del jefe. */}
         {currentNode && (
-          <div className={`pointer-events-none absolute left-1/2 z-30 flex -translate-x-1/2 flex-col items-center gap-1 ${bossPresent ? "top-16" : "top-4"
-            }`}>
+          <div className={`pointer-events-none absolute left-1/2 z-30 flex -translate-x-1/2 flex-col items-center gap-1 ${
+            bossPresent ? "top-16" : "top-4"
+          }`}>
             <div className="rounded-full border border-border/60 bg-background/85 px-4 py-1 text-sm font-bold text-foreground shadow backdrop-blur">
               {DUNGEON_NODE_NAMES[currentNode.tipo]}
             </div>
@@ -2015,10 +2016,11 @@ export function DungeonScene() {
         {bossPresent && (
           <div className="pointer-events-none absolute bottom-12 left-1/2 z-30 flex -translate-x-1/2 flex-col items-center gap-2">
             <div
-              className={`rounded-md border px-3 py-1.5 text-center shadow backdrop-blur ${isBossFurious
+              className={`rounded-md border px-3 py-1.5 text-center shadow backdrop-blur ${
+                isBossFurious
                   ? "border-purple-500/70 bg-background/90"
                   : "border-red-500/40 bg-background/85"
-                }`}
+              }`}
             >
               <p className="flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-wider text-red-300">
                 <GiSkullCrossedBones size={14} />
@@ -2042,7 +2044,40 @@ export function DungeonScene() {
                       : "Atacando - ¡huye o usa Invisibilidad!"}
               </p>
             </div>
-
+            <div className="pointer-events-auto flex gap-2">
+              <button
+                type="button"
+                onClick={regenerate}
+                disabled={isGenerating}
+                className="flex items-center gap-1 rounded bg-accent px-2 py-1 text-[10px] font-semibold text-background hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <GiVortex
+                  size={12}
+                  className={isGenerating ? "animate-spin" : undefined}
+                />
+                Otra Mazmorra
+              </button>
+              {/* Tarea 3.2 - Boton DEBUG: activa/desactiva el Modo Furia
+                  manualmente porque la Tarea 3.3 (HP del jefe) aun no
+                  esta implementada. Cuando exista el HP, se llamara a
+                  `useGameStore.getState().activarModoFuria()` desde el
+                  evento "Vida 1 == 0" en lugar de este boton. */}
+              <button
+                type="button"
+                onClick={() =>
+                  isBossFurious ? desactivarModoFuria() : activarModoFuria()
+                }
+                className={`flex items-center gap-1 rounded px-2 py-1 text-[10px] font-semibold hover:opacity-90 ${
+                  isBossFurious
+                    ? "bg-purple-700 text-purple-100"
+                    : "bg-red-700 text-red-100"
+                }`}
+                aria-pressed={isBossFurious}
+                title="Debug: simula que el jefe perdio la primera barra de vida"
+              >
+                {isBossFurious ? "Desactivar Furia" : "Activar Furia (debug)"}
+              </button>
+            </div>
           </div>
         )}
 
@@ -2172,10 +2207,11 @@ function HazardTile({
 
   return (
     <div
-      className={`absolute overflow-hidden flex items-center justify-center border ${isLava
+      className={`absolute overflow-hidden flex items-center justify-center border ${
+        isLava
           ? "border-orange-500/80 shadow-[inset_0_0_10px_rgba(124,45,18,0.7)]"
           : "border-slate-800/80"
-        }`}
+      }`}
       style={{
         left: hazard.position.x,
         top: hazard.position.y,
@@ -2221,7 +2257,7 @@ function HazardTile({
 
           {/* Cracked stone backdrop */}
           <rect width="64" height="64" fill="url(#cracked-stone)" />
-
+          
           {/* Subtle rock cracks */}
           <path d="M 0 10 L 20 25 L 35 15 L 64 45 M 10 64 L 25 45 L 20 25 M 64 12 L 44 20 L 48 44 L 25 45" stroke="#020617" strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.65" />
           <path d="M 0 10 L 20 25 L 35 15 L 64 45 M 10 64 L 25 45 L 20 25 M 64 12 L 44 20 L 48 44 L 25 45" stroke="#475569" strokeWidth="0.5" strokeLinecap="round" fill="none" opacity="0.35" />
