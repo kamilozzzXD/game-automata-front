@@ -7,6 +7,8 @@ type Options = {
   enabled: boolean
   /** Callback que dispara la escena cuando el jugador "usa" una pocion. */
   onUsePotion: (id: PotionId) => void
+  /** Si es false, impide consumir pociones (ej: en el claro del bosque). */
+  allowUse?: boolean
 }
 
 /**
@@ -20,7 +22,7 @@ type Options = {
  * IMPORTANTE: prevenimos el default de Tab/flechas para que el navegador
  * no robe el foco ni haga scroll mientras se juega.
  */
-export function useHotbarControls({ enabled, onUsePotion }: Options) {
+export function useHotbarControls({ enabled, onUsePotion, allowUse = true }: Options) {
   const cycleHotbar = useGameStore((s) => s.cycleHotbar)
   const setSelectedIndex = useGameStore((s) => s.setSelectedHotbarIndex)
   const consumeSelectedPotion = useGameStore((s) => s.consumeSelectedPotion)
@@ -37,16 +39,6 @@ export function useHotbarControls({ enabled, onUsePotion }: Options) {
         cycleHotbar(e.shiftKey ? -1 : 1)
         return
       }
-      if (key === "ArrowDown") {
-        e.preventDefault()
-        cycleHotbar(1)
-        return
-      }
-      if (key === "ArrowUp") {
-        e.preventDefault()
-        cycleHotbar(-1)
-        return
-      }
 
       // Direct selection con teclado numerico (1..9 -> slots 0..8, 0 -> slot 9)
       if (/^[0-9]$/.test(key)) {
@@ -61,6 +53,13 @@ export function useHotbarControls({ enabled, onUsePotion }: Options) {
       // Use selected potion
       if (key.toLowerCase() === "q") {
         e.preventDefault()
+        if (!allowUse) {
+          useGameStore.getState().pushNotification({
+            kind: "info",
+            message: "Solo puedes usar pociones dentro de la Mazmorra.",
+          })
+          return
+        }
         const consumed = consumeSelectedPotion()
         if (consumed) onUsePotion(consumed)
       }
@@ -68,5 +67,5 @@ export function useHotbarControls({ enabled, onUsePotion }: Options) {
 
     window.addEventListener("keydown", handler)
     return () => window.removeEventListener("keydown", handler)
-  }, [enabled, cycleHotbar, setSelectedIndex, consumeSelectedPotion, onUsePotion])
+  }, [enabled, cycleHotbar, setSelectedIndex, consumeSelectedPotion, onUsePotion, allowUse])
 }

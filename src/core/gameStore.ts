@@ -8,6 +8,7 @@ import type {
 } from "../types/game"
 import type { DungeonResponse } from "../types/dungeon"
 import type { BossAction, BossState } from "../types/boss"
+import { INITIAL_POTIONS } from "./diccionario"
 
 // Sprint 4 - Barra de acceso rapido (hotbar vertical).
 // Tenemos 10 slots fijos, uno por tipo de pocion (P1..P10).
@@ -82,11 +83,13 @@ type GameStore = {
   collectDungeonIngredients: (nodeId: number, collected: Ingredient[], remaining: (Ingredient | null)[]) => void
   claimSecretRoomPotions: (nodeId: number, potions: PotionId[]) => void
   consumeIngredient: (ingredient: Ingredient) => boolean
+  addIngredient: (ingredient: Ingredient) => void
 
   // ----- Notificaciones -----
   notifications: GameNotification[]
   pushNotification: (n: Omit<GameNotification, "id">) => void
   removeNotification: (id: number) => void
+  clearNotifications: () => void
 
   // ----- Escena actual (Sprint 3.1) -----
   // El juego ahora tiene varias escenas; el portal cambia de bosque a mazmorra.
@@ -209,6 +212,8 @@ type GameStore = {
   setIsShieldActive: (b: boolean) => void
   isExtremeCadenceActive: boolean  // P10: cooldown disparo ~0
   setIsExtremeCadenceActive: (b: boolean) => void
+  isVictoryAchieved: boolean
+  setVictoryAchieved: (b: boolean) => void
 }
 
 let notificationCounter = 0
@@ -241,11 +246,8 @@ export const useGameStore = create<GameStore>((set) => ({
   setIsCrafting: (b) => set({ isCrafting: b }),
   clearTrail: () => set({ ingredientHistory: [] }),
 
-  // Inventario (Modo Debug: 20 de cada una)
-  inventory: {
-    P1: 20, P2: 20, P3: 20, P4: 20, P5: 20,
-    P6: 20, P7: 20, P8: 20, P9: 20, P10: 20,
-  },
+  // Inventario (Balance inicial cargado desde diccionario.tsx)
+  inventory: { ...INITIAL_POTIONS },
   ingredientInventory: {},
   trashCount: 0,
   addPotion: (id) =>
@@ -308,6 +310,13 @@ export const useGameStore = create<GameStore>((set) => ({
     })
     return success
   },
+  addIngredient: (ingredient) =>
+    set((state) => ({
+      ingredientInventory: {
+        ...state.ingredientInventory,
+        [ingredient]: (state.ingredientInventory[ingredient] ?? 0) + 1,
+      },
+    })),
 
   // Notificaciones
   notifications: [],
@@ -319,6 +328,8 @@ export const useGameStore = create<GameStore>((set) => ({
     set((state) => ({
       notifications: state.notifications.filter((x) => x.id !== id),
     })),
+  clearNotifications: () =>
+    set({ notifications: [] }),
 
   // Escena
   currentScene: "forest",
@@ -391,6 +402,7 @@ export const useGameStore = create<GameStore>((set) => ({
       bossHp: 100,
       bossLives: 2,
       bossHealthFlash: false,
+      isVictoryAchieved: false,
     }),
 
   // Modo Furia (Tarea 3.2 - handoff a Tarea 3.3).
@@ -494,4 +506,6 @@ export const useGameStore = create<GameStore>((set) => ({
   setIsShieldActive: (b) => set({ isShieldActive: b }),
   isExtremeCadenceActive: false,
   setIsExtremeCadenceActive: (b) => set({ isExtremeCadenceActive: b }),
+  isVictoryAchieved: false,
+  setVictoryAchieved: (b) => set({ isVictoryAchieved: b }),
 }))

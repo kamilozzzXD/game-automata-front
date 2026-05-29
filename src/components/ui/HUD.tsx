@@ -15,32 +15,9 @@ const INGREDIENTS_UI: { id: Ingredient; Icon: React.ElementType; color: string }
 ]
 
 const POTION_ORDER: PotionId[] = [
-  "P1",
-  "P2",
-  "P3",
-  "P4",
-  "P5",
-  "P6",
-  "P7",
-  "P8",
-  "P9",
-  "P10",
+  "P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10",
 ]
 
-/**
- * Heads-Up Display: muestra inventario y controles superpuestos sobre la escena.
- *
- * Sprint Polish-Pass:
- *   - Tarea 1: el HUD ahora monta a la PotionHotbar dentro de la misma
- *     columna izquierda, justo debajo del bloque "X pociones / basura Y".
- *     Asi toda la informacion secuencial de pociones queda agrupada.
- *   - Tarea 2: cada pocion del inventario abierto se renderiza con su
- *     color caracteristico (POTION_COLORS) para identificarlas de un
- *     vistazo, sin pasar el raton por encima.
- *   - Tarea 3 (Accion 1): el bloque del inventario ya NO depende del
- *     raton. Se abre/cierra con la tecla "I" (toggle). El boton sigue
- *     siendo cliqueable como respaldo, pero no es la via principal.
- */
 export function HUD() {
   const inventory = useGameStore((s) => s.inventory)
   const ingredientInventory = useGameStore((s) => s.ingredientInventory)
@@ -61,9 +38,7 @@ export function HUD() {
   const ownedPotions = POTION_ORDER.filter((id) => (inventory[id] ?? 0) > 0)
   const ownedIngredients = INGREDIENTS_UI.filter(({id}) => (ingredientInventory[id] ?? 0) > 0)
 
-  // Tecla "I" para abrir/cerrar el inventario (Sprint Polish-Pass - Tarea 3.1).
-  // Ignoramos la tecla cuando el usuario esta tipeando en un input/textarea
-  // (defensa contra futuros campos de texto).
+  // Tecla "I" para abrir/cerrar el inventario
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() !== "i") return
@@ -83,7 +58,7 @@ export function HUD() {
     return () => window.removeEventListener("keydown", handler)
   }, [])
 
-  // Tecla "O" para abrir/cerrar el inventario de ingredientes.
+  // Tecla "O" para abrir/cerrar el inventario de ingredientes
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() !== "o") return
@@ -105,15 +80,14 @@ export function HUD() {
 
   return (
     <>
-      {/* Bloque izquierdo: contadores + hotbar.
-          Posicion absoluta dentro del contenedor relativo de la escena. */}
+      {/* Bloque izquierdo: contadores + hotbar */}
       <div className="pointer-events-auto absolute left-4 top-4 z-30 flex flex-col gap-2">
         
         {/* Fila de Inventarios */}
         <div className="flex items-start gap-2">
           
-          {/* Columna Pociones */}
-          <div className="flex flex-col gap-2">
+          {/* Columna Pociones -> Añadido 'relative' para contener el desplegable absoluto */}
+          <div className="relative flex flex-col gap-2">
             <button
               onClick={() => setOpen((v) => !v)}
               aria-expanded={open}
@@ -135,8 +109,9 @@ export function HUD() {
               </kbd>
             </button>
 
+            {/* Ajustado a absolute, z-40 y fondo más traslúcido bg-background/75 */}
             {open && (
-              <div className="w-64 rounded-lg border border-border/60 bg-background/90 p-3 text-sm shadow-xl backdrop-blur">
+              <div className="absolute top-full left-0 z-40 mt-1.5 w-64 rounded-lg border border-border/60 bg-background/75 p-3 text-sm shadow-xl backdrop-blur">
                 <p className="mb-2 flex items-center justify-between text-xs uppercase tracking-wider text-muted-foreground">
                   <span>Inventario</span>
                   <kbd className="rounded bg-muted px-1 text-[10px] text-foreground">
@@ -183,8 +158,8 @@ export function HUD() {
             )}
           </div>
 
-          {/* Columna Ingredientes */}
-          <div className="flex flex-col gap-2">
+          {/* Columna Ingredientes -> Añadido 'relative' para contener el desplegable absoluto */}
+          <div className="relative flex flex-col gap-2">
             <button
               onClick={() => setOpenIngredients((v) => !v)}
               aria-expanded={openIngredients}
@@ -199,8 +174,9 @@ export function HUD() {
               </kbd>
             </button>
 
+            {/* Ajustado a absolute, z-40 y fondo más traslúcido bg-background/75 */}
             {openIngredients && (
-              <div className="w-64 rounded-lg border border-border/60 bg-background/90 p-3 text-sm shadow-xl backdrop-blur">
+              <div className="absolute top-full left-0 z-40 mt-1.5 w-64 rounded-lg border border-border/60 bg-background/75 p-3 text-sm shadow-xl backdrop-blur">
                 <p className="mb-2 flex items-center justify-between text-xs uppercase tracking-wider text-muted-foreground">
                   <span>Materiales Mágicos</span>
                   <kbd className="rounded bg-muted px-1 text-[10px] text-foreground">
@@ -236,38 +212,21 @@ export function HUD() {
           </div>
         </div>
 
-        {/* Barra rapida vertical (Sprint Polish-Pass - Tarea 1):
-            queda apilada justo debajo del bloque de info de pociones. */}
+        {/* Barra rápida de pociones: Ahora se quedará fija aquí arriba */}
         <PotionHotbar />
       </div>
 
       {/* Controles */}
       <div className="pointer-events-none absolute right-4 top-4 z-30 rounded-lg border border-border/60 bg-background/70 px-3 py-2 text-xs text-muted-foreground backdrop-blur">
-        <p>
-          <kbd className="rounded bg-muted px-1 text-foreground">WASD</kbd> moverse
-        </p>
-        <p>
-          <kbd className="rounded bg-muted px-1 text-foreground">E</kbd> interactuar
-        </p>
-        <p>
-          <kbd className="rounded bg-muted px-1 text-foreground">I</kbd> pociones
-        </p>
-        <p>
-          <kbd className="rounded bg-muted px-1 text-foreground">O</kbd> materiales
-        </p>
-        <p>
-          <kbd className="rounded bg-muted px-1 text-foreground">Tab</kbd>{" "}
-          <kbd className="rounded bg-muted px-1 text-foreground">↑↓</kbd> hotbar
-        </p>
-        <p>
-          <kbd className="rounded bg-muted px-1 text-foreground">Q</kbd> usar pocion
-        </p>
-        <p>
-          <kbd className="rounded bg-muted px-1 text-foreground">J</kbd> disparar
-        </p>
+        <p><kbd className="rounded bg-muted px-1 text-foreground">WASD</kbd> moverse</p>
+        <p><kbd className="rounded bg-muted px-1 text-foreground">E</kbd> interactuar</p>
+        <p><kbd className="rounded bg-muted px-1 text-foreground">I</kbd> pociones</p>
+        <p><kbd className="rounded bg-muted px-1 text-foreground">O</kbd> materiales</p>
+        <p><kbd className="rounded bg-muted px-1 text-foreground">Tab</kbd> <kbd className="rounded bg-muted px-1 text-foreground"></kbd> hotbar</p>
+        <p><kbd className="rounded bg-muted px-1 text-foreground">Q</kbd> usar pocion</p>
+        <p><kbd className="rounded bg-muted px-1 text-foreground">J</kbd> disparar</p>
       </div>
 
-      {/* Panel de efectos activos (esquina inferior-derecha) */}
       <ActiveEffects />
     </>
   )
