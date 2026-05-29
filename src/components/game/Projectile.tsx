@@ -9,7 +9,7 @@ import ataqueGifUrl from "../../assets/fireball-fire.gif"
  *                    jugador que VIENE algo gordo y debe esquivarlo o se
  *                    fragmentara en 8 al expirar.
  */
-export type ProjectileVariant = "player" | "boss-basic" | "boss-heavy"
+export type ProjectileVariant = "player" | "boss-basic" | "boss-heavy" | "boss-poison"
 
 type Props = {
   /** Posicion del CENTRO del proyectil (no la esquina sup-izq). */
@@ -48,13 +48,18 @@ export function Projectile({ x, y, size = 14, variant = "player" }: Props) {
           halo: "bg-red-500/40 blur-sm",
           core: "bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.85)]",
         }
-        : {
-          // boss-heavy: Modo Furia. Mas saturado y con un anillo extra
-          // que pulsa para que el jugador "lea" que es peligroso.
-          halo: "bg-purple-700/55 blur-md animate-pulse",
-          core:
-            "bg-purple-900 ring-2 ring-purple-400/70 shadow-[0_0_18px_rgba(126,34,206,0.95)]",
-        }
+        : variant === "boss-poison"
+          ? {
+            halo: "bg-emerald-500/40 blur-sm",
+            core: "bg-emerald-500 ring-1 ring-emerald-300 shadow-[0_0_10px_rgba(34,197,94,0.9)] animate-pulse",
+          }
+          : {
+            // boss-heavy: Modo Furia. Mas saturado y con un anillo extra
+            // que pulsa para que el jugador "lea" que es peligroso.
+            halo: "bg-purple-700/55 blur-md animate-pulse",
+            core:
+              "bg-purple-900 ring-2 ring-purple-400/70 shadow-[0_0_18px_rgba(126,34,206,0.95)]",
+          }
 
   return (
     <div
