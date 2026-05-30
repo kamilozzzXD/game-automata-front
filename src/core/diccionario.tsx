@@ -55,7 +55,7 @@ export const POTION_EFFECT_VALUES = {
 export const COMBAT_CONFIG = {
   PLAYER_MAX_HP: 100,
   PLAYER_PROJECTILE_DAMAGE: 10,
-  SHOOT_COOLDOWN_MS: 180, // Tiempo de espera base entre disparos (ms)
+  SHOOT_COOLDOWN_MS: 500, // Tiempo de espera base entre disparos (ms)
   
   // Umbrales de detección de la Inteligencia Artificial del Jefe (en píxeles)
   VISION_RADIUS: 130,     // Dentro de este radio -> estímulo "v" (visión del boss)
