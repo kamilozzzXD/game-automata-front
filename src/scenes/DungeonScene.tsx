@@ -26,7 +26,7 @@ import { center, distance, intersectsAABB, isWithinRadius } from "../core/geomet
 import { useGameKeyboard } from "../hooks/useGameKeyboard"
 import { useHotbarControls } from "../hooks/useHotbarControls"
 import { usePlayerMovement } from "../hooks/usePlayerMovement"
-import { bossAction, combatHit, generateDungeon } from "../services/api"
+import { bossAction, combatHit } from "../services/api"
 import { parseBossState } from "../types/boss"
 import type { BossAction, BossState, BossStimulus } from "../types/boss"
 import type { DungeonNode } from "../types/dungeon"
@@ -406,8 +406,8 @@ export function DungeonScene() {
   const playerPosition = useGameStore((s) => s.playerPosition)
   const setPlayerPosition = useGameStore((s) => s.setPlayerPosition)
   const isGenerating = useGameStore((s) => s.isGeneratingDungeon)
-  const setIsGenerating = useGameStore((s) => s.setIsGeneratingDungeon)
-  const setCurrentDungeon = useGameStore((s) => s.setCurrentDungeon)
+  //const setIsGenerating = useGameStore((s) => s.setIsGeneratingDungeon)
+  //const setCurrentDungeon = useGameStore((s) => s.setCurrentDungeon)
   const pushNotification = useGameStore((s) => s.pushNotification)
   const collectDungeonIngredients = useGameStore((s) => s.collectDungeonIngredients)
   const claimSecretRoomPotions = useGameStore((s) => s.claimSecretRoomPotions)

@@ -1,6 +1,5 @@
 import { useState, useRef } from "react"
 import { GiCauldron } from "react-icons/gi"
-import cinematicaUrl from "../../assets/cinematica.mp4"
 
 type Props = {
   onComplete: () => void
@@ -86,7 +85,7 @@ export function IntroCinematic({ onComplete }: Props) {
       {/* Reproductor de Video */}
       <video
         ref={videoRef}
-        src={cinematicaUrl}
+        src= "https://www.dropbox.com/scl/fi/wxfx8whtvr3pexuc4w51a/cinematica.mp4?rlkey=fjsooxe2fjosx2qpiqbtet92v&st=qzvdwg2t&raw=1"
         className="w-full h-full object-contain rounded-lg bg-black"
         onEnded={handleSkipOrEnd}
         autoPlay
