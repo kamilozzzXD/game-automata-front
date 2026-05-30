@@ -1,5 +1,6 @@
 import { useState, useRef } from "react"
-import { GiCauldron } from "react-icons/gi"
+// Importamos tu nueva imagen (asegúrate de que la ruta coincida con la ubicación de tu componente)
+import alquimistaImg from "../../assets/alquimista.png" 
 import cinematicaUrl from "../../assets/cinematica.mp4"
 
 type Props = {
@@ -36,17 +37,25 @@ export function IntroCinematic({ onComplete }: Props) {
 
         {/* Contenido Principal */}
         <div className="relative flex flex-col items-center text-center px-4 max-w-xl z-10 animate-fade-in">
-          <div className="relative mb-6 p-4 rounded-full border border-primary/20 bg-primary/5 shadow-2xl shadow-primary/10 animate-pulse">
-            <GiCauldron className="text-primary hover:rotate-12 transition-transform duration-500" size={64} />
+          
+          {/* Contenedor de la nueva imagen del Alquimista */}
+          <div className="relative mb-6 rounded-2xl border border-primary/20 bg-primary/5 shadow-[0_0_40px_rgba(139,92,246,0.3)] animate-pulse overflow-hidden group">
+            <div className="absolute inset-0 bg-gradient-to-t from-violet-900/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+            <img 
+              src={alquimistaImg} 
+              alt="El Alquimista Mago" 
+              className="w-48 h-48 md:w-56 md:h-56 object-cover hover:scale-110 hover:-rotate-2 transition-transform duration-500 pixelated"
+            />
           </div>
 
+          {/* Nuevo Título Épico */}
           <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-4 select-none">
             <span className="bg-gradient-to-r from-violet-400 via-purple-300 to-amber-300 bg-clip-text text-transparent drop-shadow-md font-cinzel-dec font-bold tracking-wide">
-              EL CALDERO
+              EL ALQUIMISTA
             </span>
             <br />
             <span className="text-2xl md:text-3xl font-medium text-muted-foreground uppercase tracking-widest font-cinzel">
-              del destino
+              de los autómatas
             </span>
           </h1>
 
@@ -56,7 +65,7 @@ export function IntroCinematic({ onComplete }: Props) {
 
           <button
             onClick={handleStart}
-            className="group relative flex items-center justify-center px-12 py-4.5 rounded-2xl border-2 border-primary/50 bg-gradient-to-r from-violet-700 via-purple-700 to-violet-800 text-base font-bold tracking-widest text-white shadow-[0_0_24px_rgba(139,92,246,0.25)] hover:shadow-[0_0_35px_rgba(139,92,246,0.5)] backdrop-blur-md transition-all duration-300 hover:scale-105 hover:border-primary hover:from-violet-600 hover:to-purple-600 font-medieval cursor-pointer"
+            className="group relative flex items-center justify-center px-12 py-4 rounded-2xl border-2 border-primary/50 bg-gradient-to-r from-violet-700 via-purple-700 to-violet-800 text-base font-bold tracking-widest text-white shadow-[0_0_24px_rgba(139,92,246,0.25)] hover:shadow-[0_0_35px_rgba(139,92,246,0.5)] backdrop-blur-md transition-all duration-300 hover:scale-105 hover:border-primary hover:from-violet-600 hover:to-purple-600 font-medieval cursor-pointer"
           >
             {/* Brillo interno */}
             <span className="absolute inset-0 rounded-2xl bg-gradient-to-r from-white/15 via-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
