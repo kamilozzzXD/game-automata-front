@@ -26,7 +26,7 @@ import { center, distance, intersectsAABB, isWithinRadius } from "../core/geomet
 import { useGameKeyboard } from "../hooks/useGameKeyboard"
 import { useHotbarControls } from "../hooks/useHotbarControls"
 import { usePlayerMovement } from "../hooks/usePlayerMovement"
-import { bossAction, combatHit, generateDungeon } from "../services/api"
+import { bossAction, combatHit } from "../services/api"
 import { parseBossState } from "../types/boss"
 import type { BossAction, BossState, BossStimulus } from "../types/boss"
 import type { DungeonNode } from "../types/dungeon"
@@ -320,6 +320,8 @@ const BOSS_PATROL_REACHED_EPSILON = 4
 
 // Cooldown entre disparos basicos del jefe (estado C).
 const BOSS_SHOOT_COOLDOWN_MS = 1500
+// Cooldown entre disparos de los mini-jefes en salas secretas.
+const MINI_BOSS_SHOOT_COOLDOWN_MS = 1000
 // Tarea 3.3: daño que infligen los proyectiles del jefe al jugador.
 const BOSS_BASIC_PROJECTILE_DAMAGE = 23
 const BOSS_HEAVY_PROJECTILE_DAMAGE = 38
@@ -406,8 +408,6 @@ export function DungeonScene() {
   const playerPosition = useGameStore((s) => s.playerPosition)
   const setPlayerPosition = useGameStore((s) => s.setPlayerPosition)
   const isGenerating = useGameStore((s) => s.isGeneratingDungeon)
-  const setIsGenerating = useGameStore((s) => s.setIsGeneratingDungeon)
-  const setCurrentDungeon = useGameStore((s) => s.setCurrentDungeon)
   const pushNotification = useGameStore((s) => s.pushNotification)
   const collectDungeonIngredients = useGameStore((s) => s.collectDungeonIngredients)
   const claimSecretRoomPotions = useGameStore((s) => s.claimSecretRoomPotions)
@@ -1479,35 +1479,55 @@ export function DungeonScene() {
           const bossCenter = center(cur, BOSS_SIZE)
           const distToPlayer = distance(bossCenter, playerCenter)
 
-          if (isMini && getMiniBossType(currentNode?.id ?? 0) === "ghost") {
-            // Teletransporte del fantasma cada 2.5s
-            const nowTime = performance.now()
-            if (nowTime - lastGhostTeleportRef.current >= 2500) {
-              lastGhostTeleportRef.current = nowTime
-              const angle = Math.random() * Math.PI * 2
-              const radius = 130 + Math.random() * 70 // 130 a 200px
-              const targetX = playerCenter.x + Math.cos(angle) * radius - BOSS_SIZE.width / 2
-              const targetY = playerCenter.y + Math.sin(angle) * radius - BOSS_SIZE.height / 2
-              const clampedX = Math.max(BOSS_WORLD_MARGIN, Math.min(WORLD_SIZE.width - BOSS_SIZE.width - BOSS_WORLD_MARGIN, targetX))
-              const clampedY = Math.max(BOSS_WORLD_MARGIN, Math.min(WORLD_SIZE.height - BOSS_SIZE.height - BOSS_WORLD_MARGIN, targetY))
+          if (isMini) {
+            // ==========================================
+            // LÓGICA DE MOVIMIENTO DE LOS MINI-JEFES
+            // ==========================================
+            const miniType = getMiniBossType(currentNode?.id ?? 0)
 
-              nextBossPos = { x: clampedX, y: clampedY }
+            if (miniType === "ghost") {
+              // Teletransporte del fantasma cada 2.5s
+              const nowTime = performance.now()
+              if (nowTime - lastGhostTeleportRef.current >= 2500) {
+                lastGhostTeleportRef.current = nowTime
+                const angle = Math.random() * Math.PI * 2
+                const radius = 130 + Math.random() * 70 // 130 a 200px
+                const targetX = playerCenter.x + Math.cos(angle) * radius - BOSS_SIZE.width / 2
+                const targetY = playerCenter.y + Math.sin(angle) * radius - BOSS_SIZE.height / 2
+                const clampedX = Math.max(BOSS_WORLD_MARGIN, Math.min(WORLD_SIZE.width - BOSS_SIZE.width - BOSS_WORLD_MARGIN, targetX))
+                const clampedY = Math.max(BOSS_WORLD_MARGIN, Math.min(WORLD_SIZE.height - BOSS_SIZE.height - BOSS_WORLD_MARGIN, targetY))
 
-              pushNotification({
-                kind: "info",
-                message: "¡El Fantasma se desvanece y se teletransporta!",
-              })
+                nextBossPos = { x: clampedX, y: clampedY }
+
+                pushNotification({
+                  kind: "info",
+                  message: "¡El Fantasma se desvanece y se teletransporta!",
+                })
+              } else {
+                if (distToPlayer > BOSS_MIN_DISTANCE_TO_PLAYER) {
+                  const target: Vector2D = {
+                    x: playerCenter.x - BOSS_SIZE.width / 2,
+                    y: playerCenter.y - BOSS_SIZE.height / 2,
+                  }
+                  // Vuelve a su velocidad de caminata anterior constante (1.5) sin suavizado (Lerp)
+                  nextBossPos = stepTowards(cur, target, BOSS_ATTACK_SPEED * speedMult)
+                }
+              }
             } else {
+              // Esqueleto o Bruja: persiguen al jugador directamente
               if (distToPlayer > BOSS_MIN_DISTANCE_TO_PLAYER) {
                 const target: Vector2D = {
                   x: playerCenter.x - BOSS_SIZE.width / 2,
                   y: playerCenter.y - BOSS_SIZE.height / 2,
                 }
+                // Vuelven a su velocidad anterior constante (1.5) sin suavizado (Lerp)
                 nextBossPos = stepTowards(cur, target, BOSS_ATTACK_SPEED * speedMult)
               }
             }
           } else {
-            // ----------- JEFE PRINCIPAL: MOVIMIENTO Y METRALLETA -----------
+            // ==========================================
+            // LÓGICA DEL JEFE PRINCIPAL
+            // ==========================================
             const nowTime = performance.now()
 
             // 1. Iniciar el temporizador de metralleta cuando entra en furia por primera vez
@@ -1529,17 +1549,25 @@ export function DungeonScene() {
               }
             }
 
-            // 3. Aceleración Suave (Lerp)
-            const targetSpeed = furious ? 3.0 : 2.0
-            bossCurrentSpeedRef.current += (targetSpeed - bossCurrentSpeedRef.current) * 0.02
-            let currentAttackSpeed = bossCurrentSpeedRef.current
+            // 3. Velocidad y aceleración según la fase
+            let currentAttackSpeed = BOSS_ATTACK_SPEED
+
+            if (furious) {
+              // Fase 2 (Furia): Vuelve a su velocidad anterior constante (3.0) sin suavizado de Lerp
+              currentAttackSpeed = BOSS_ATTACK_SPEED // 3.0
+            } else {
+              // Fase 1: Conserva su velocidad actual con suavizado de Lerp hacia targetSpeed = 2.0
+              const targetSpeed = 2.0
+              bossCurrentSpeedRef.current += (targetSpeed - bossCurrentSpeedRef.current) * 0.02
+              currentAttackSpeed = bossCurrentSpeedRef.current
+            }
 
             // Si está en modo ráfaga, frenarlo a 0.0
             if (isMachineGunRef.current) {
               currentAttackSpeed = 0.0
             }
 
-            // Mover al jefe
+            // Mover al jefe principal
             if (distToPlayer > BOSS_MIN_DISTANCE_TO_PLAYER) {
               const target: Vector2D = {
                 x: playerCenter.x - BOSS_SIZE.width / 2,
@@ -1572,12 +1600,12 @@ export function DungeonScene() {
           if (isMini) {
             const miniType = getMiniBossType(currentNode?.id ?? 0)
             if (miniType === "witch") {
-              if (now - lastBossShotAtRef.current >= 1500) {
+              if (now - lastBossShotAtRef.current >= MINI_BOSS_SHOOT_COOLDOWN_MS) {
                 lastBossShotAtRef.current = now
                 pendingSpawn = buildBossShotAtPlayer(false, cur, "poison")
               }
             } else {
-              if (now - lastBossShotAtRef.current >= BOSS_SHOOT_COOLDOWN_MS) {
+              if (now - lastBossShotAtRef.current >= MINI_BOSS_SHOOT_COOLDOWN_MS) {
                 lastBossShotAtRef.current = now
                 pendingSpawn = buildBossShotAtPlayer(false, cur, "basic")
               }
