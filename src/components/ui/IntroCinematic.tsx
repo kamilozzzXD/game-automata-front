@@ -1,6 +1,6 @@
 import { useState, useRef } from "react"
 // Importamos tu nueva imagen (asegúrate de que la ruta coincida con la ubicación de tu componente)
-import alquimistaImg from "../../assets/alquimista.png" 
+import alquimistaImg from "../../assets/alquimista.png"
 
 type Props = {
   onComplete: () => void
@@ -36,13 +36,13 @@ export function IntroCinematic({ onComplete }: Props) {
 
         {/* Contenido Principal */}
         <div className="relative flex flex-col items-center text-center px-4 max-w-xl z-10 animate-fade-in">
-          
+
           {/* Contenedor de la nueva imagen del Alquimista */}
           <div className="relative mb-6 rounded-2xl border border-primary/20 bg-primary/5 shadow-[0_0_40px_rgba(139,92,246,0.3)] animate-pulse overflow-hidden group">
             <div className="absolute inset-0 bg-gradient-to-t from-violet-900/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-            <img 
-              src={alquimistaImg} 
-              alt="El Alquimista Mago" 
+            <img
+              src={alquimistaImg}
+              alt="El Alquimista Mago"
               className="w-48 h-48 md:w-56 md:h-56 object-cover hover:scale-110 hover:-rotate-2 transition-transform duration-500 pixelated"
             />
           </div>
@@ -68,7 +68,7 @@ export function IntroCinematic({ onComplete }: Props) {
           >
             {/* Brillo interno */}
             <span className="absolute inset-0 rounded-2xl bg-gradient-to-r from-white/15 via-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-            
+
             COMENZAR LA HISTORIA
           </button>
         </div>
@@ -94,7 +94,7 @@ export function IntroCinematic({ onComplete }: Props) {
       {/* Reproductor de Video */}
       <video
         ref={videoRef}
-        src= "https://www.dropbox.com/scl/fi/wxfx8whtvr3pexuc4w51a/cinematica.mp4?rlkey=fjsooxe2fjosx2qpiqbtet92v&st=qzvdwg2t&raw=1"
+        src="https://www.dropbox.com/scl/fi/gxzudd779qk5evovfj49j/cinematica_automata.mp4?rlkey=eluvew3m1qy91wpcyx7t8ap1x&st=mdmhr3qb&raw=1"
         className="w-full h-full object-contain rounded-lg bg-black"
         onEnded={handleSkipOrEnd}
         autoPlay

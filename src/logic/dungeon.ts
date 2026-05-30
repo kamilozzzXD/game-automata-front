@@ -18,10 +18,12 @@ function obtenerNuevoId(): number {
 /**
  * Regla de Produccion A:
  * A -> sala | epsilon
- * 50% de probabilidad de generar una sala
+ * Si 'forced' es true, garantizamos que se genere una sala en esta llamada.
+ * Si no, 60% de probabilidad de generar una sala.
  */
-function resolverA(): DungeonNode[] {
-  if (Math.random() < 0.5) {
+function resolverA(forced: boolean = false): DungeonNode[] {
+  // Aumentamos la probabilidad al 60% o forzamos la sala
+  if (forced || Math.random() < 0.60) {
     return [{
       id: obtenerNuevoId(),
       tipo: "sala",
@@ -38,9 +40,9 @@ function resolverA(): DungeonNode[] {
  * Genera un pasillo, opcionalmente conecta una sala,
  * y opcionalmente continua con mas pasillos.
  */
-function resolverR(profundidadMax: number = 3): DungeonNode[] {
+function resolverR(profundidadMax: number = 3, needSala: boolean = true): DungeonNode[] {
   const nodosR: DungeonNode[] = []
-  
+
   // Crear el pasillo actual
   const pasillo: DungeonNode = {
     id: obtenerNuevoId(),
@@ -50,17 +52,29 @@ function resolverR(profundidadMax: number = 3): DungeonNode[] {
   }
   nodosR.push(pasillo)
 
-  // Intentar conectar una sala
-  const nodosA = resolverA()
-  if (nodosA.length > 0) {
+  // Determinar si vamos a generar otro pasillo (70% de probabilidad para aumentar la complejidad)
+  const willRecurse = profundidadMax > 0 && Math.random() < 0.70
+
+  // Si es la ultima oportunidad de generar un pasillo en esta rama
+  // y todavia no hemos creado ninguna sala, la forzamos aqui.
+  const forceThisStep = needSala && !willRecurse
+
+  // Intentar conectar una sala (con la nueva logica de forzado)
+  const nodosA = resolverA(forceThisStep)
+  const hasSalaNow = nodosA.length > 0
+
+  if (hasSalaNow) {
     const sala = nodosA[0]
     pasillo.conexiones.push(sala.id)
     nodosR.push(sala)
   }
 
-  // Continuar recursivamente con 50% de probabilidad
-  if (profundidadMax > 0 && Math.random() < 0.5) {
-    const restoDeRuta = resolverR(profundidadMax - 1)
+  // Continuar recursivamente
+  if (willRecurse) {
+    // La siguiente recursion necesitara sala si no hemos generado una aun
+    const nextNeedSala = needSala && !hasSalaNow
+    const restoDeRuta = resolverR(profundidadMax - 1, nextNeedSala)
+
     if (restoDeRuta.length > 0) {
       const siguientePasillo = restoDeRuta[0]
       pasillo.conexiones.push(siguientePasillo.id)
@@ -79,23 +93,23 @@ function resolverR(profundidadMax: number = 3): DungeonNode[] {
  */
 function resolverIngredientes(): Ingredient[] {
   const opciones: Ingredient[] = ["A", "B", "C", "D", "E"]
-  
+
   // Determinar cantidad base usando la gramatica
   let cantidad = 1
   while (Math.random() < 0.5) {
     cantidad += 1
   }
-  
+
   // Multiplicar por 2 para aumentar la cantidad generada
   cantidad *= 2
-  
+
   // Generar ingredientes aleatorios
   const resultados: Ingredient[] = []
   for (let i = 0; i < cantidad; i++) {
     const idx = Math.floor(Math.random() * opciones.length)
     resultados.push(opciones[idx])
   }
-  
+
   return resultados
 }
 
@@ -121,8 +135,8 @@ function aplicarGramaticaIngredientes(nodos: DungeonNode[]): DungeonNode[] {
  * Genera la estructura completa de la mazmorra: inicio, pasillos/salas, jefe.
  */
 function resolverN(): DungeonNode[] {
-  // Resetear el contador de IDs
-  contId = 0
+  // Generamos un ID random inicial igual que en Python
+  contId = Math.floor(Math.random() * (10000 - 10 + 1)) + 10
   const nodosTotales: DungeonNode[] = []
 
   // Crear el nodo de inicio
@@ -134,8 +148,8 @@ function resolverN(): DungeonNode[] {
   }
   nodosTotales.push(inicio)
 
-  // Generar la ruta (pasillos y salas)
-  const nodosR = resolverR()
+  // Generar la ruta (pasillos y salas) forzando que haya al menos una sala
+  const nodosR = resolverR(3, true)
   if (nodosR.length > 0) {
     inicio.conexiones.push(nodosR[0].id)
     nodosTotales.push(...nodosR)
@@ -148,7 +162,7 @@ function resolverN(): DungeonNode[] {
     conexiones: [],
     ingredientes: [],
   }
-  
+
   // Conectar el ultimo pasillo al jefe
   const ultimoPasillo = [...nodosR].reverse().find(n => n.tipo === "pasillo")
   if (ultimoPasillo) {
@@ -166,10 +180,10 @@ function resolverN(): DungeonNode[] {
 export function generarMazmorra(): DungeonResponse {
   // Generar el AST de la mazmorra
   let astSimulado = resolverN()
-  
+
   // Aplicar la segunda gramatica para asignar ingredientes
   astSimulado = aplicarGramaticaIngredientes(astSimulado)
-  
+
   // Construir la cadena plana para debug/visualizacion
   const elementosCadena: string[] = []
   for (const nodo of astSimulado) {
@@ -180,9 +194,9 @@ export function generarMazmorra(): DungeonResponse {
       elementosCadena.push(nodo.tipo)
     }
   }
-  
+
   const cadenaPlana = elementosCadena.join(" ")
-  
+
   return {
     cadena_plana: cadenaPlana,
     estructura_ast: astSimulado,
