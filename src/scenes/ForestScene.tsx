@@ -1,16 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { GiPineTree } from "react-icons/gi"
 import { Cauldron } from "../components/game/Cauldron"
 import { Player } from "../components/game/Player"
 import { Portal } from "../components/game/Portal"
-import { IngredientItem } from "../components/game/IngredientItem"
+
 import { CraftingModal } from "../components/ui/CraftingModal"
 import { HUD } from "../components/ui/HUD"
 import { Notifications } from "../components/ui/Notifications"
 import { useGameStore } from "../core/gameStore"
-import { POTION_NAMES, INGREDIENT_NAMES } from "../core/dictionary"
-import { isWithinRadius, intersectsAABB } from "../core/geometry"
-import type { Interactable, Size, PotionId, Ingredient, Vector2D } from "../types/game"
+import { isWithinRadius } from "../core/geometry"
+import type { Interactable, Size } from "../types/game"
 import { useGameKeyboard } from "../hooks/useGameKeyboard"
 import { useHotbarControls } from "../hooks/useHotbarControls"
 import { usePlayerMovement } from "../hooks/usePlayerMovement"
@@ -59,7 +58,6 @@ export function ForestScene() {
   const setCurrentDungeon = useGameStore((s) => s.setCurrentDungeon)
   const setCurrentScene = useGameStore((s) => s.setCurrentScene)
   const pushNotification = useGameStore((s) => s.pushNotification)
-  const addIngredient = useGameStore((s) => s.addIngredient)
 
 
 

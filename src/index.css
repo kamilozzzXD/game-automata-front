@@ -29,6 +29,11 @@
   --color-ring: oklch(0.82 0.16 80);
 
   --radius: 0.625rem;
+
+  /* Fuentes medievales y místicas */
+  --font-cinzel: "Cinzel", serif;
+  --font-medieval: "MedievalSharp", cursive;
+  --font-cinzel-dec: "Cinzel Decorative", serif;
 }
 
 /* ----- Reset basico ----- */
