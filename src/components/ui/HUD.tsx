@@ -5,6 +5,7 @@ import { POTION_COLORS, POTION_NAMES, INGREDIENT_NAMES } from "../../core/dictio
 import type { PotionId, Ingredient } from "../../types/game"
 import { PotionHotbar } from "./PotionHotbar"
 import { ActiveEffects } from "./ActiveEffects"
+import { FullscreenToggle } from "./FullscreenToggle"
 
 const INGREDIENTS_UI: { id: Ingredient; Icon: React.ElementType; color: string }[] = [
   { id: "A", Icon: GiWaterDrop, color: "text-sky-300" },
@@ -216,8 +217,13 @@ export function HUD() {
         <PotionHotbar />
       </div>
 
+      {/* Botón de pantalla completa flotante */}
+      <div className="absolute right-4 top-4 z-30">
+        <FullscreenToggle />
+      </div>
+
       {/* Controles */}
-      <div className="pointer-events-none absolute right-4 top-4 z-30 rounded-lg border border-border/60 bg-background/70 px-3 py-2 text-xs text-muted-foreground backdrop-blur">
+      <div className="pointer-events-none absolute right-4 top-16 z-30 rounded-lg border border-border/60 bg-background/70 px-3 py-2 text-xs text-muted-foreground backdrop-blur">
         <p><kbd className="rounded bg-muted px-1 text-foreground">WASD</kbd> moverse</p>
         <p><kbd className="rounded bg-muted px-1 text-foreground">E</kbd> interactuar</p>
         <p><kbd className="rounded bg-muted px-1 text-foreground">I</kbd> pociones</p>

@@ -427,55 +427,51 @@ export function ForestScene() {
   const canvasRef = useCanvasLoop({ width: WORLD_SIZE.width, height: WORLD_SIZE.height, draw: drawForest })
 
   return (
-    <main className="flex min-h-screen w-full items-center justify-center bg-background p-4">
-      <div
-        className="relative overflow-hidden rounded-2xl border-2 border-border shadow-2xl"
-        style={{ width: WORLD_SIZE.width, height: WORLD_SIZE.height }}
-      >
-        {/* Canvas base: fondo + rejilla 40px en z-0 (capa inferior absoluta) */}
-        <canvas ref={canvasRef} className="absolute inset-0" style={{ zIndex: 0 }} aria-hidden />
+    <div
+      className="relative overflow-hidden rounded-2xl border-2 border-border shadow-2xl bg-background"
+      style={{ width: WORLD_SIZE.width, height: WORLD_SIZE.height }}
+    >
+      {/* Canvas base: fondo + rejilla 40px en z-0 (capa inferior absoluta) */}
+      <canvas ref={canvasRef} className="absolute inset-0" style={{ zIndex: 0 }} aria-hidden />
 
-        {/* Portal hacia la mazmorra (lado izquierdo del claro) */}
-        <Portal
-          position={PORTAL.position}
-          size={PORTAL.size}
-          isPlayerNear={isPlayerNearPortal}
-          isBusy={isGeneratingDungeon}
-          onlyOverlay={true}
-        />
+      {/* Portal hacia la mazmorra (lado izquierdo del claro) */}
+      <Portal
+        position={PORTAL.position}
+        size={PORTAL.size}
+        isPlayerNear={isPlayerNearPortal}
+        isBusy={isGeneratingDungeon}
+        onlyOverlay={true}
+      />
 
-        {/* Caldero */}
-        <Cauldron
-          position={CAULDRON.position}
-          size={CAULDRON.size}
-          isPlayerNear={isPlayerNearCauldron}
-          onlyOverlay={true}
-        />
-
+      {/* Caldero */}
+      <Cauldron
+        position={CAULDRON.position}
+        size={CAULDRON.size}
+        isPlayerNear={isPlayerNearCauldron}
+        onlyOverlay={true}
+      />
 
 
-        {/* El jugador se dibuja directamente en el canvas (ver drawForest) */}
 
-        {/* HUD superpuesto (incluye el inventario y la PotionHotbar
-            apilados en la columna izquierda - Sprint Polish-Pass T1). */}
-        <HUD />
-        <MobileHUD />
+      {/* El jugador se dibuja directamente en el canvas (ver drawForest) */}
 
-        {/* Aviso si la ventana no tiene foco */}
-        {!hasFocus && (
-          <div className="absolute inset-0 z-30 flex items-center justify-center bg-background/60 backdrop-blur-sm">
-            <p className="rounded-lg border border-border bg-card px-4 py-2 text-sm text-card-foreground shadow-md">
-              Haz clic en la ventana para jugar
-            </p>
-          </div>
-        )}
+      {/* HUD superpuesto (incluye el inventario y la PotionHotbar
+          apilados en la columna izquierda - Sprint Polish-Pass T1). */}
+      <HUD />
+      <MobileHUD />
 
-        {/* Modales */}
-        <CraftingModal />
-        <Notifications />
-      </div>
+      {/* Aviso si la ventana no tiene foco */}
+      {!hasFocus && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-background/60 backdrop-blur-sm">
+          <p className="rounded-lg border border-border bg-card px-4 py-2 text-sm text-card-foreground shadow-md">
+            Haz clic en la ventana para jugar
+          </p>
+        </div>
+      )}
 
-
-    </main>
+      {/* Modales */}
+      <CraftingModal />
+      <Notifications />
+    </div>
   )
 }

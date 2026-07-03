@@ -249,6 +249,33 @@ src/
 - **Y-Sorting Unificado por Base**: Las entidades con altura (Jugador, Jefe, pinos, portal, caldero, pedestal, y proyectiles) se agrupan en cada frame en una lista dinámica de renderizables y se ordenan por su coordenada de anclaje base (`yBase = y + height`). Esto garantiza que el jugador y el jefe se traslapen correctamente delante o detrás de los árboles u otros elementos según su posición física 2.5D.
 - **HTML Overlays**: Para retener la accesibilidad y el dinamismo de los menús e interacciones de usuario, los prompts textuales de interaccion (`Pulsa [E] para usar`, etc.) continúan en el DOM superpuestos con absoluta precisión y nulo impacto en el renderizado del lienzo principal.
 
+---
+
+### Tarea 8 — Responsividad Híbrida: Detección Móvil y Pantalla Completa
+
+**Objetivo:** Crear un sistema responsivo híbrido que detecte dispositivos móviles con pantalla táctil, escale el contenedor de juego (960x600) para ocupar el máximo espacio del viewport manteniendo su relación de aspecto original 16:10 (*Letterboxing*), prevenga gestos de zoom involuntarios e integre un botón de pantalla completa flotante con manejo de fallos para iOS Safari.
+
+**Archivos afectados:**
+
+| Archivo | Cambio |
+|---|---|
+| `index.html` | Modificada la etiqueta `<meta name="viewport">` para bloquear el zoom móvil (`maximum-scale=1.0, user-scalable=no`). |
+| `src/utils/debounce.ts` | **NUEVO** | Implementada la función utilitaria `debounce` para mitigar la frecuencia excesiva del evento `resize`. |
+| `src/hooks/useMobileDetection.ts` | **NUEVO** | Creado el hook `useMobileDetection` para detectar `isMobile` y `isLandscape` de manera dinámica mediante `resize` optimizado con debounce. |
+| `src/components/ui/FullscreenToggle.tsx` | **NUEVO** | Componente de botón translúcido flotante para activar/desactivar la pantalla completa nativa utilizando `requestFullscreen` con soporte vendor-prefixed e interceptación segura (`try/catch`) para iOS Safari. |
+| `src/App.tsx` | Añadido el cálculo matemático de escalado (`scale = Math.min(window.innerWidth / 960, window.innerHeight / 600) * 0.98`) con redimensionamiento dinámico optimizado con debounce (100ms), centrando el *Ghost Wrapper* mediante Flexbox (`100vw`, `100dvh`). |
+| `src/scenes/DungeonScene.tsx` | Removido el contenedor `<main>` redundante con `min-h-screen`, delegando el centrado y redimensionado al contenedor global de `App.tsx`. |
+| `src/scenes/ForestScene.tsx` | Removido el contenedor `<main>` redundante con `min-h-screen`, delegando el centrado y redimensionado al contenedor global de `App.tsx`. |
+| `src/components/ui/HUD.tsx` | Añadido el componente `<FullscreenToggle />` en la esquina superior derecha y desplazada la tarjeta informativa de controles de teclado a `top-16` para evitar colisión visual. |
+
+**Decisiones de ingeniería:**
+
+- **Prevención de Zoom e Interrupción**: Añadiendo `user-scalable=no` y `maximum-scale=1.0` al viewport, prevenimos comportamientos indeseados en navegadores móviles (doble tap/pinch-to-zoom) que descuadran el lienzo y afectan los controles táctiles.
+- **Letterboxing Limpio con transform: scale**: El canvas mantiene su tamaño lógico de `960x600`, mientras que un contenedor de Flexbox centrado en `100vw`/`100dvh` y un factor de escala del `98%` aseguran que el juego ocupe el máximo espacio físico del teléfono sin deformarse y sin tocar los bordes del dispositivo.
+- **Resize Debouncing**: El evento `resize` está regulado con un debounce de 100ms tanto en el hook de detección como en el componente principal, reduciendo significativamente la cantidad de recálculos de estilo y actualizaciones de estado de React durante redimensionados.
+- **API Fullscreen Segura**: La función `toggleFullscreen` evalúa y soporta alternativas vendor-prefixed (`webkit`, `moz`, `ms`) para extender la compatibilidad, atrapando cualquier error con `try/catch` para evitar caídas catastróficas en iOS Safari.
+
+
 
 
 

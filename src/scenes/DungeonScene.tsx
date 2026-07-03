@@ -2120,215 +2120,211 @@ export function DungeonScene() {
   const canvasRef = useCanvasLoop({ width: WORLD_SIZE.width, height: WORLD_SIZE.height, draw: drawDungeon })
 
   return (
-    <main className="flex min-h-screen w-full items-center justify-center bg-background p-4">
-      <div
-        className="relative overflow-hidden rounded-2xl border-2 border-border shadow-2xl"
-        style={{ width: WORLD_SIZE.width, height: WORLD_SIZE.height }}
-      >
-        {/* Canvas base: fondo + vignette + jugador (todo en el mismo buffer) */}
-        <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none" style={{ zIndex: 0 }} aria-hidden />
+    <div
+      className="relative overflow-hidden rounded-2xl border-2 border-border shadow-2xl bg-background"
+      style={{ width: WORLD_SIZE.width, height: WORLD_SIZE.height }}
+    >
+      {/* Canvas base: fondo + vignette + jugador (todo en el mismo buffer) */}
+      <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none" style={{ zIndex: 0 }} aria-hidden />
 
-        {/* Habitacion (fondo + decoracion segun tipo) */}
-        {currentNode && (
-          <DungeonRoom type={currentNode.tipo} worldSize={WORLD_SIZE} />
-        )}
+      {/* Habitacion (fondo + decoracion segun tipo) */}
+      {currentNode && (
+        <DungeonRoom type={currentNode.tipo} worldSize={WORLD_SIZE} />
+      )}
 
 
-        {/* Portal de salida (solo en la sala inicial) */}
-        {isInInicio && (
-          <Portal
-            position={EXIT_PORTAL.position}
-            size={EXIT_PORTAL.size}
-            isPlayerNear={isPlayerNearExitPortal}
-            label="Salir de la Mazmorra"
-            actionLabel="para volver al bosque"
-            onlyOverlay={true}
-          />
-        )}
+      {/* Portal de salida (solo en la sala inicial) */}
+      {isInInicio && (
+        <Portal
+          position={EXIT_PORTAL.position}
+          size={EXIT_PORTAL.size}
+          isPlayerNear={isPlayerNearExitPortal}
+          label="Salir de la Mazmorra"
+          actionLabel="para volver al bosque"
+          onlyOverlay={true}
+        />
+      )}
 
-        {/* Puertas hacia hijos (direccion segun config cacheada de la sala) */}
-        {currentConfig &&
-          Array.from(currentConfig.childDirs.entries()).map(([cid, dir]) => (
-            <DoorTile
-              key={`child-${cid}`}
-              dir={dir}
-              variant="forward"
-              destId={cid}
-              destType={nodeMap.get(cid)?.tipo}
-            />
-          ))}
-
-        {/* Puerta hacia el padre (direccion = de donde vino el jugador) */}
-        {currentConfig && currentConfig.backDir !== null && parentId !== null && (
+      {/* Puertas hacia hijos (direccion segun config cacheada de la sala) */}
+      {currentConfig &&
+        Array.from(currentConfig.childDirs.entries()).map(([cid, dir]) => (
           <DoorTile
-            dir={currentConfig.backDir}
-            variant="back"
-            destId={parentId}
-            locked={currentNode?.tipo === "jefe" && bossLives > 0}
+            key={`child-${cid}`}
+            dir={dir}
+            variant="forward"
+            destId={cid}
+            destType={nodeMap.get(cid)?.tipo}
           />
-        )}
+        ))}
 
-        {/* El jefe se dibuja directamente en el canvas (ver drawDungeon) */}
+      {/* Puerta hacia el padre (direccion = de donde vino el jugador) */}
+      {currentConfig && currentConfig.backDir !== null && parentId !== null && (
+        <DoorTile
+          dir={currentConfig.backDir}
+          variant="back"
+          destId={parentId}
+          locked={currentNode?.tipo === "jefe" && bossLives > 0}
+        />
+      )}
 
-        {/* Mini-Boss (solo en salas secretas) */}
-        {secretBossPresent && miniBossHp > 0 && currentNode && (
-          <MiniBoss
-            position={miniBossPosition}
-            size={BOSS_SIZE}
-            state={miniBossState}
-            type={getMiniBossType(currentNode.id)}
-          />
-        )}
+      {/* El jefe se dibuja directamente en el canvas (ver drawDungeon) */}
 
-        {/* Proyectiles del jefe: dibujados en canvas (ver drawDungeon) */}
+      {/* Mini-Boss (solo en salas secretas) */}
+      {secretBossPresent && miniBossHp > 0 && currentNode && (
+        <MiniBoss
+          position={miniBossPosition}
+          size={BOSS_SIZE}
+          state={miniBossState}
+          type={getMiniBossType(currentNode.id)}
+        />
+      )}
 
-        {/* Proyectiles del jugador: dibujados en canvas (ver drawDungeon) */}
+      {/* Proyectiles del jefe: dibujados en canvas (ver drawDungeon) */}
+
+      {/* Proyectiles del jugador: dibujados en canvas (ver drawDungeon) */}
 
 
 
-        {/* Cofre Secreto (Aparece tras derrotar al mini-jefe) */}
-        {currentNode?.tipo === "sala" && currentNode.enemigo_derrotado && !currentNode.pociones_reclamadas && (
-          <GiOpenTreasureChest
-            className="absolute z-20 text-amber-300 drop-shadow-lg animate-pulse"
-            size={140}
+      {/* Cofre Secreto (Aparece tras derrotar al mini-jefe) */}
+      {currentNode?.tipo === "sala" && currentNode.enemigo_derrotado && !currentNode.pociones_reclamadas && (
+        <GiOpenTreasureChest
+          className="absolute z-20 text-amber-300 drop-shadow-lg animate-pulse"
+          size={140}
+          style={{
+            left: WORLD_SIZE.width - 180,
+            top: 60,
+          }}
+          aria-hidden
+        />
+      )}
+
+      {/* Llave de Oro de la Victoria sobre Pedestal de Luz */}
+      {keySpawned && !keyCollected && (
+        <div
+          className="absolute z-20 flex items-center justify-center pointer-events-none animate-fade-in"
+          style={{
+            left: keyPosition.x,
+            top: keyPosition.y,
+            width: BOSS_SIZE.width,
+            height: BOSS_SIZE.height,
+          }}
+        >
+          {/* Pedestal de luz vertical */}
+          <div
+            className="absolute bottom-0 w-16 h-40 bg-gradient-to-t from-yellow-500/40 via-yellow-400/20 to-transparent rounded-full blur-md animate-pulse"
             style={{
-              left: WORLD_SIZE.width - 180,
-              top: 60,
+              transform: "translateY(20px)",
             }}
             aria-hidden
           />
-        )}
-
-        {/* Llave de Oro de la Victoria sobre Pedestal de Luz */}
-        {keySpawned && !keyCollected && (
+          {/* Halo brillante en la base */}
           <div
-            className="absolute z-20 flex items-center justify-center pointer-events-none animate-fade-in"
+            className="absolute bottom-0 w-12 h-4 bg-yellow-500/50 rounded-full blur-sm animate-pulse"
             style={{
-              left: keyPosition.x,
-              top: keyPosition.y,
-              width: BOSS_SIZE.width,
-              height: BOSS_SIZE.height,
+              transform: "translateY(35px) scaleY(0.3)",
             }}
-          >
-            {/* Pedestal de luz vertical */}
-            <div
-              className="absolute bottom-0 w-16 h-40 bg-gradient-to-t from-yellow-500/40 via-yellow-400/20 to-transparent rounded-full blur-md animate-pulse"
-              style={{
-                transform: "translateY(20px)",
-              }}
-              aria-hidden
-            />
-            {/* Halo brillante en la base */}
-            <div
-              className="absolute bottom-0 w-12 h-4 bg-yellow-500/50 rounded-full blur-sm animate-pulse"
-              style={{
-                transform: "translateY(35px) scaleY(0.3)",
-              }}
-              aria-hidden
-            />
-            {/* Llave Dorada rebotando */}
-            <GiKey
-              className="relative text-yellow-400 drop-shadow-[0_0_15px_rgba(250,204,21,0.95)] animate-bounce"
-              size={48}
-              style={{
-                animationDuration: "2s",
-              }}
-            />
+            aria-hidden
+          />
+          {/* Llave Dorada rebotando */}
+          <GiKey
+            className="relative text-yellow-400 drop-shadow-[0_0_15px_rgba(250,204,21,0.95)] animate-bounce"
+            size={48}
+            style={{
+              animationDuration: "2s",
+            }}
+          />
+        </div>
+      )}
+
+
+
+      {/* El jugador se dibuja directamente en el canvas (ver drawDungeon) */}
+
+      {/* Tarea 3.3: Barra de vida del Jefe (solo en la sala del jefe) */}
+      {bossPresent && bossLives > 0 && <BossHealthBar />}
+
+      {/* Barra de vida del Mini-Boss (solo en salas secretas) */}
+      {secretBossPresent && miniBossHp > 0 && <MiniBossHealthBar />}
+
+      {/* Tarea 3.3: Barra de vida del Jugador */}
+      <PlayerHealthBar />
+
+      {/* HUD compartido (inventario + controles + hotbar
+          integrada en la columna izquierda - Sprint Polish-Pass T1). */}
+      <HUD />
+      <MobileHUD />
+
+      {/* Etiqueta de la sala actual (top center).
+          Tarea 3.3: cuando está el jefe, la etiqueta se mueve más abajo
+          para no tapar la barra de vida del jefe. */}
+      {currentNode && (
+        <div className={`pointer-events-none absolute left-1/2 z-30 flex -translate-x-1/2 flex-col items-center gap-1 ${bossPresent ? "top-16" : "top-4"
+          }`}>
+          <div className="rounded-full border border-border/60 bg-background/85 px-4 py-1 text-sm font-bold text-foreground shadow backdrop-blur">
+            {DUNGEON_NODE_NAMES[currentNode.tipo]}
           </div>
-        )}
+          <p className="rounded bg-background/60 px-2 py-0.5 text-[10px] text-muted-foreground backdrop-blur">
+            {DUNGEON_NODE_DESCRIPTIONS[currentNode.tipo]}
+          </p>
+        </div>
+      )}
 
+      {/* Cadena plana en pequeno como debug (esquina inferior izquierda) */}
+      {dungeon && (
+        <div className="pointer-events-none absolute bottom-3 left-3 z-30 max-w-[60%] rounded-md border border-border/40 bg-background/70 px-2 py-1 text-[10px] font-mono text-muted-foreground backdrop-blur">
+          <span className="opacity-70">debug:</span> {dungeon.cadena_plana}
+        </div>
+      )}
 
-
-        {/* El jugador se dibuja directamente en el canvas (ver drawDungeon) */}
-
-        {/* Tarea 3.3: Barra de vida del Jefe (solo en la sala del jefe) */}
-        {bossPresent && bossLives > 0 && <BossHealthBar />}
-
-        {/* Barra de vida del Mini-Boss (solo en salas secretas) */}
-        {secretBossPresent && miniBossHp > 0 && <MiniBossHealthBar />}
-
-        {/* Tarea 3.3: Barra de vida del Jugador */}
-        <PlayerHealthBar />
-
-        {/* HUD compartido (inventario + controles + hotbar
-            integrada en la columna izquierda - Sprint Polish-Pass T1). */}
-        <HUD />
-        <MobileHUD />
-
-        {/* Etiqueta de la sala actual (top center).
-            Tarea 3.3: cuando está el jefe, la etiqueta se mueve más abajo
-            para no tapar la barra de vida del jefe. */}
-        {currentNode && (
-          <div className={`pointer-events-none absolute left-1/2 z-30 flex -translate-x-1/2 flex-col items-center gap-1 ${bossPresent ? "top-16" : "top-4"
-            }`}>
-            <div className="rounded-full border border-border/60 bg-background/85 px-4 py-1 text-sm font-bold text-foreground shadow backdrop-blur">
-              {DUNGEON_NODE_NAMES[currentNode.tipo]}
-            </div>
-            <p className="rounded bg-background/60 px-2 py-0.5 text-[10px] text-muted-foreground backdrop-blur">
-              {DUNGEON_NODE_DESCRIPTIONS[currentNode.tipo]}
+      {/* Panel discreto en la sala del jefe (Sprint 4):
+          - Muestra el estado/accion actual del automata.
+          - Botones de regenerar y salir, sin tapar al jefe (lateral inf.)
+          - Tarea 3.2: badge de Modo Furia + boton debug para activarlo. */}
+      {bossPresent && (
+        <div className="pointer-events-none absolute bottom-12 left-1/2 z-30 flex -translate-x-1/2 flex-col items-center gap-2">
+          <div
+            className={`rounded-md border px-3 py-1.5 text-center shadow backdrop-blur ${isBossFurious
+              ? "border-purple-500/70 bg-background/90"
+              : "border-red-500/40 bg-background/85"
+              }`}
+          >
+            <p className="flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-wider text-red-300">
+              <GiSkullCrossedBones size={14} />
+              IA del Jefe: estado {bossState}
+              {isBossThinking && (
+                <GiVortex size={12} className="animate-spin text-amber-300" />
+              )}
+              {isBossFurious && (
+                <span className="ml-1 rounded bg-purple-700 px-1.5 py-0 text-[10px] font-extrabold text-purple-100 animate-pulse">
+                  FURIA
+                </span>
+              )}
+            </p>
+            <p className="text-[10px] text-muted-foreground">
+              {bossState === "A"
+                ? "Patrulla relajada"
+                : bossState === "B"
+                  ? "En busqueda - alerta"
+                  : isBossFurious
+                    ? "Atacando con FURIA - cuidado con los proyectiles morados"
+                    : "Atacando - ¡huye o usa Invisibilidad!"}
             </p>
           </div>
-        )}
 
-        {/* Cadena plana en pequeno como debug (esquina inferior izquierda) */}
-        {dungeon && (
-          <div className="pointer-events-none absolute bottom-3 left-3 z-30 max-w-[60%] rounded-md border border-border/40 bg-background/70 px-2 py-1 text-[10px] font-mono text-muted-foreground backdrop-blur">
-            <span className="opacity-70">debug:</span> {dungeon.cadena_plana}
+        </div>
+      )}
+
+      {/* Loader cuando se esta regenerando */}
+      {isGenerating && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-background/70 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-3 text-foreground/80">
+            <GiVortex className="animate-spin text-accent" size={48} />
+            <p className="text-sm">Tejiendo otra mazmorra...</p>
           </div>
-        )}
-
-        {/* Panel discreto en la sala del jefe (Sprint 4):
-            - Muestra el estado/accion actual del automata.
-            - Botones de regenerar y salir, sin tapar al jefe (lateral inf.)
-            - Tarea 3.2: badge de Modo Furia + boton debug para activarlo. */}
-        {bossPresent && (
-          <div className="pointer-events-none absolute bottom-12 left-1/2 z-30 flex -translate-x-1/2 flex-col items-center gap-2">
-            <div
-              className={`rounded-md border px-3 py-1.5 text-center shadow backdrop-blur ${isBossFurious
-                ? "border-purple-500/70 bg-background/90"
-                : "border-red-500/40 bg-background/85"
-                }`}
-            >
-              <p className="flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-wider text-red-300">
-                <GiSkullCrossedBones size={14} />
-                IA del Jefe: estado {bossState}
-                {isBossThinking && (
-                  <GiVortex size={12} className="animate-spin text-amber-300" />
-                )}
-                {isBossFurious && (
-                  <span className="ml-1 rounded bg-purple-700 px-1.5 py-0 text-[10px] font-extrabold text-purple-100 animate-pulse">
-                    FURIA
-                  </span>
-                )}
-              </p>
-              <p className="text-[10px] text-muted-foreground">
-                {bossState === "A"
-                  ? "Patrulla relajada"
-                  : bossState === "B"
-                    ? "En busqueda - alerta"
-                    : isBossFurious
-                      ? "Atacando con FURIA - cuidado con los proyectiles morados"
-                      : "Atacando - ¡huye o usa Invisibilidad!"}
-              </p>
-            </div>
-
-          </div>
-        )}
-
-        {/* Loader cuando se esta regenerando */}
-        {isGenerating && (
-          <div className="absolute inset-0 z-40 flex items-center justify-center bg-background/70 backdrop-blur-sm">
-            <div className="flex flex-col items-center gap-3 text-foreground/80">
-              <GiVortex className="animate-spin text-accent" size={48} />
-              <p className="text-sm">Tejiendo otra mazmorra...</p>
-            </div>
-          </div>
-        )}
-        <Notifications />
-      </div>
-
-
-    </main>
+        </div>
+      )}
+      <Notifications />
+    </div>
   )
 }
 
