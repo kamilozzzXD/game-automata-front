@@ -187,6 +187,29 @@ src/
 - **Glow Específico en GPU**: Se aplican efectos inestables de resplandor mediante `shadowBlur = 15` y `shadowColor = "#a855f7"` solo para los proyectiles de tipo pesado.
 - **Colisiones AABB sin Bloqueos**: Detección de colisiones instantánea con `intersectsAABB` entre la caja del jugador y el proyectil. Si el jugador es impactado y no está protegido por escudo, se efectúa la sustracción de vida asíncrona vía API Turing y se notifica visualmente.
 
+---
+
+### Tarea 6 — Cierre de Deuda Técnica y Optimización Algorítmica
+
+**Objetivo:** Modificar los algoritmos matemáticos base y la captura de eventos táctiles para mitigar el estrangulamiento térmico (throttling) y la saturación del Event Loop en dispositivos móviles.
+
+**Archivos afectados:**
+
+| Archivo | Cambio |
+|---|---|
+| `src/core/geometry.ts` | Refactorizado `isWithinRadius` y añadida `intersectsCircleOptimized` para evitar raíces cuadradas mediante la comparación de **distancias al cuadrado** directas. |
+| `src/scenes/DungeonScene.tsx` | Optimizado el cálculo del near-miss, la detección de rango de la IA, el rango del Mini-Boss y la iluminación de Hazards para usar distancia cuadrática directa. Renders de `MobileHUD` incorporados. |
+| `src/scenes/ForestScene.tsx` | Renders de `MobileHUD` incorporados. |
+| `src/hooks/usePlayerMovement.ts` | Añadido soporte de movimiento por vector de joystick táctil. |
+| `src/core/gameStore.ts` | Definida la propiedad `joystickVector` de tipo `Vector2D` y su acción `setJoystickVector`. |
+| `src/components/ui/MobileHUD.tsx` | **NUEVO** | Componente táctil de Joystick Virtual flotante que implementa acumulación (*Gating*) a 60 FPS mediante `requestAnimationFrame` del evento `pointermove`. |
+
+**Decisiones de ingeniería:**
+
+- **Eliminación Absoluta de Math.sqrt**: Todos los chequeos de radio (rango de la IA, near miss de proyectiles, iluminación de trampas e interacciones con el caldero/portal) se reemplazaron por comparaciones de distancias al cuadrado (`dx * dx + dy * dy <= r * r`), reduciendo significativamente la carga aritmética en la CPU a 60 FPS.
+- **Joystick Virtual Táctil con Gating**: Los eventos de arrastre en el joystick virtual se leen a alta velocidad en memoria local (`pendingVectorRef`) y se despachan a Zustand estrictamente a una cadencia de 60 FPS dentro de un bucle gestionado por `requestAnimationFrame`, previniendo la degradación y lag en pantallas de 120Hz/240Hz.
+
+
 
 
 

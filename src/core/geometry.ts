@@ -14,7 +14,7 @@ export function center(pos: Vector2D, size: Size): Vector2D {
 
 /**
  * True si el centro del jugador esta dentro del radio de interaccion
- * de una entidad. Suficiente para Sprint 1.
+ * de una entidad. Optimizado para evitar Math.sqrt() usando distancias al cuadrado.
  */
 export function isWithinRadius(
   playerPos: Vector2D,
@@ -23,7 +23,25 @@ export function isWithinRadius(
   targetSize: Size,
   radius: number,
 ): boolean {
-  return distance(center(playerPos, playerSize), center(targetPos, targetSize)) <= radius
+  const c1 = center(playerPos, playerSize)
+  const c2 = center(targetPos, targetSize)
+  const dx = c1.x - c2.x
+  const dy = c1.y - c2.y
+  return (dx * dx + dy * dy) <= radius * radius
+}
+
+/**
+ * Colisiones circulares optimizadas evitando Math.sqrt()
+ */
+export function intersectsCircleOptimized(
+  x1: number, y1: number, r1: number, 
+  x2: number, y2: number, r2: number
+): boolean {
+  const dx = x2 - x1
+  const dy = y2 - y1
+  const distCuadrada = (dx * dx) + (dy * dy)
+  const radioSuma = r1 + r2
+  return distCuadrada < (radioSuma * radioSuma)
 }
 
 /**

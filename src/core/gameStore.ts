@@ -52,6 +52,10 @@ type GameStore = {
   isPlayerMoving: boolean
   setIsPlayerMoving: (b: boolean) => void
 
+  // ----- Joystick (Tarea 6) -----
+  joystickVector: Vector2D
+  setJoystickVector: (v: Vector2D) => void
+
   // ----- UI / Escena -----
   isCraftingOpen: boolean
   openCrafting: () => void
@@ -234,6 +238,10 @@ export const useGameStore = create<GameStore>((set) => ({
   setLastDirection: (v) => set({ lastDirection: v }),
   isPlayerMoving: false,
   setIsPlayerMoving: (b) => set({ isPlayerMoving: b }),
+
+  // Joystick (Tarea 6)
+  joystickVector: { x: 0, y: 0 },
+  setJoystickVector: (v) => set({ joystickVector: v }),
 
   // UI
   isCraftingOpen: false,

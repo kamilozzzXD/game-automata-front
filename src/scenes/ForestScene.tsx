@@ -7,6 +7,7 @@ import { Portal } from "../components/game/Portal"
 
 import { CraftingModal } from "../components/ui/CraftingModal"
 import { HUD } from "../components/ui/HUD"
+import { MobileHUD } from "../components/ui/MobileHUD"
 import { Notifications } from "../components/ui/Notifications"
 import { useGameStore } from "../core/gameStore"
 import { isWithinRadius } from "../core/geometry"
@@ -287,6 +288,7 @@ export function ForestScene() {
         {/* HUD superpuesto (incluye el inventario y la PotionHotbar
             apilados en la columna izquierda - Sprint Polish-Pass T1). */}
         <HUD />
+        <MobileHUD />
 
         {/* Aviso si la ventana no tiene foco */}
         {!hasFocus && (

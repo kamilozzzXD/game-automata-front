@@ -19,6 +19,7 @@ import { BossHealthBar } from "../components/ui/BossHealthBar"
 import { MiniBossHealthBar } from "../components/ui/MiniBossHealthBar"
 import { PlayerHealthBar } from "../components/ui/PlayerHealthBar"
 import { HUD } from "../components/ui/HUD"
+import { MobileHUD } from "../components/ui/MobileHUD"
 import { Notifications } from "../components/ui/Notifications"
 import { DUNGEON_NODE_NAMES, DUNGEON_NODE_DESCRIPTIONS, POTION_NAMES, INGREDIENT_NAMES } from "../core/dictionary"
 import { POTION_DURATIONS, POTION_EFFECT_VALUES, COMBAT_CONFIG } from "../core/diccionario"
@@ -982,10 +983,13 @@ export function DungeonScene() {
 
       const playerCenter = center(snap.playerPosition, PLAYER_SIZE)
       const miniBossCenter = center(miniBossPositionRef.current, BOSS_SIZE)
-      const dist = distance(miniBossCenter, playerCenter)
+      const dx = miniBossCenter.x - playerCenter.x
+      const dy = miniBossCenter.y - playerCenter.y
+      const distSq = dx * dx + dy * dy
+      const visionRadiusSq = VISION_RADIUS * VISION_RADIUS // 200^2 = 40000
 
       const curState = snap.miniBossState
-      if (dist <= VISION_RADIUS) {
+      if (distSq <= visionRadiusSq) {
         if (curState !== "C") {
           void sendMiniBossStimulus("v", curState)
         }
@@ -1221,9 +1225,12 @@ export function DungeonScene() {
         // -------- 1) Movimiento del jefe/mini-jefe segun el estado de Moore --------
         if (state === "A") {
           // Patrullaje.
-          const reached =
-            !patrolTargetRef.current ||
-            distance(cur, patrolTargetRef.current) <= BOSS_PATROL_REACHED_EPSILON
+          let reached = !patrolTargetRef.current
+          if (patrolTargetRef.current) {
+            const dx = cur.x - patrolTargetRef.current.x
+            const dy = cur.y - patrolTargetRef.current.y
+            reached = (dx * dx + dy * dy) <= BOSS_PATROL_REACHED_EPSILON * BOSS_PATROL_REACHED_EPSILON
+          }
           if (reached) {
             const angle = Math.random() * Math.PI * 2
             const radius = Math.random() * BOSS_PATROL_RADIUS
@@ -1245,7 +1252,10 @@ export function DungeonScene() {
           patrolTargetRef.current = null
           const playerCenter = center(snap.playerPosition, PLAYER_SIZE)
           const bossCenter = center(cur, BOSS_SIZE)
-          const distToPlayer = distance(bossCenter, playerCenter)
+          const dx = bossCenter.x - playerCenter.x
+          const dy = bossCenter.y - playerCenter.y
+          const distToPlayerSq = dx * dx + dy * dy
+          const minDistanceSq = BOSS_MIN_DISTANCE_TO_PLAYER * BOSS_MIN_DISTANCE_TO_PLAYER
 
           if (isMini) {
             // ==========================================
@@ -1272,7 +1282,7 @@ export function DungeonScene() {
                   message: "¡El Fantasma se desvanece y se teletransporta!",
                 })
               } else {
-                if (distToPlayer > BOSS_MIN_DISTANCE_TO_PLAYER) {
+                if (distToPlayerSq > minDistanceSq) {
                   const target: Vector2D = {
                     x: playerCenter.x - BOSS_SIZE.width / 2,
                     y: playerCenter.y - BOSS_SIZE.height / 2,
@@ -1283,7 +1293,7 @@ export function DungeonScene() {
               }
             } else {
               // Esqueleto o Bruja: persiguen al jugador directamente
-              if (distToPlayer > BOSS_MIN_DISTANCE_TO_PLAYER) {
+              if (distToPlayerSq > minDistanceSq) {
                 const target: Vector2D = {
                   x: playerCenter.x - BOSS_SIZE.width / 2,
                   y: playerCenter.y - BOSS_SIZE.height / 2,
@@ -1336,7 +1346,7 @@ export function DungeonScene() {
             }
 
             // Mover al jefe principal
-            if (distToPlayer > BOSS_MIN_DISTANCE_TO_PLAYER) {
+            if (distToPlayerSq > minDistanceSq) {
               const target: Vector2D = {
                 x: playerCenter.x - BOSS_SIZE.width / 2,
                 y: playerCenter.y - BOSS_SIZE.height / 2,
@@ -1778,9 +1788,11 @@ export function DungeonScene() {
       // Near miss (solo jefe principal)
       if (!p.triggeredNearMiss && bossRoomRef.current && targetPos) {
         const bossCenter = center(bossPositionRef.current, BOSS_SIZE)
-        const distToBoss = distance({ x: p.x, y: p.y }, bossCenter)
+        const dx = p.x - bossCenter.x
+        const dy = p.y - bossCenter.y
+        const distToBossSq = dx * dx + dy * dy
         const nearMissThreshold = Math.max(BOSS_SIZE.width, BOSS_SIZE.height) / 2 + BOSS_NEAR_MISS_THRESHOLD
-        if (distToBoss < nearMissThreshold) {
+        if (distToBossSq < nearMissThreshold * nearMissThreshold) {
           p.triggeredNearMiss = true
           const curState = useGameStore.getState().bossState
           if (curState !== "C") {
@@ -2052,6 +2064,7 @@ export function DungeonScene() {
         {/* HUD compartido (inventario + controles + hotbar
             integrada en la columna izquierda - Sprint Polish-Pass T1). */}
         <HUD />
+        <MobileHUD />
 
         {/* Etiqueta de la sala actual (top center).
             Tarea 3.3: cuando está el jefe, la etiqueta se mueve más abajo
@@ -2226,12 +2239,12 @@ function HazardTile({
   playerPos: Vector2D
 }) {
   const isLava = hazard.type === "lava"
-  const dist = distance(
-    center(playerPos, PLAYER_SIZE),
-    center(hazard.position, hazard.size)
-  )
-  // La antorcha ilumina 140px, dejamos 160px para el efecto de borde luminoso
-  const inLight = dist <= 160
+  const c1 = center(playerPos, PLAYER_SIZE)
+  const c2 = center(hazard.position, hazard.size)
+  const dx = c1.x - c2.x
+  const dy = c1.y - c2.y
+  // La antorcha ilumina 140px, dejamos 160px para el efecto de borde luminoso (160^2 = 25600)
+  const inLight = (dx * dx + dy * dy) <= 25600
 
   // Generar un borde de charco orgánico determinista para cada lava basado en su ID/posición
   const puddleBorderRadius = isLava

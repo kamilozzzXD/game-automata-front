@@ -76,6 +76,12 @@ export function usePlayerMovement({
       if (keys.has("a") || keys.has("arrowleft")) dx -= 1
       if (keys.has("d") || keys.has("arrowright")) dx += 1
 
+      const joy = useGameStore.getState().joystickVector
+      if (joy && (joy.x !== 0 || joy.y !== 0)) {
+        dx = joy.x
+        dy = joy.y
+      }
+
       if (dx !== 0 || dy !== 0) {
         // Normalizar diagonal (Pitagoras): |v| = sqrt(dx^2 + dy^2)
         const len = Math.sqrt(dx * dx + dy * dy)
