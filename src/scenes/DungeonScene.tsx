@@ -11,6 +11,7 @@ import { Boss } from "../components/game/Boss"
 import { MiniBoss } from "../components/game/MiniBoss"
 import { loadImage } from "../utils/assetLoader"
 import spritesheetUrl from "../assets/character-spritesheet.png"
+import fireballUrl from "../assets/fireball.png"
 import { Portal } from "../components/game/Portal"
 import { Projectile } from "../components/game/Projectile"
 import { DungeonRoom } from "../components/game/DungeonRoom"
@@ -1596,8 +1597,11 @@ export function DungeonScene() {
 
   // Ref a la textura del jugador (evita drawImage con string crudo)
   const playerSpriteRef = useRef<HTMLImageElement | null>(null)
+  // Ref a la textura de la bola de fuego
+  const fireballSpriteRef = useRef<HTMLImageElement | null>(null)
   useEffect(() => {
     loadImage(spritesheetUrl).then((img) => { playerSpriteRef.current = img })
+    loadImage(fireballUrl).then((img) => { fireballSpriteRef.current = img })
   }, [])
 
   // Dibujo del lienzo base + jugador (sprite clipping LPC).
@@ -1758,15 +1762,26 @@ export function DungeonScene() {
         }
       }
 
-      // Dibujo con halo incandescente (GPU shadowBlur)
-      ctx.save()
-      ctx.shadowBlur = 8
-      ctx.shadowColor = "#eab308"
-      ctx.fillStyle = "#eab308"
-      ctx.beginPath()
-      ctx.arc(p.x, p.y, 6, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.restore()
+      // Dibujo con rotación dinámica y textura precargada (glow en GPU opcional/incorporado en asset)
+      if (fireballSpriteRef.current) {
+        ctx.save()
+        ctx.translate(p.x, p.y)
+        const angle = Math.atan2(p.dy, p.dx)
+        ctx.rotate(angle)
+        // Dibujado centrado en la coordenada con escala de 32x32px
+        ctx.drawImage(fireballSpriteRef.current, -16, -16, 32, 32)
+        ctx.restore()
+      } else {
+        // Fallback primitivo mientras carga el asset
+        ctx.save()
+        ctx.shadowBlur = 8
+        ctx.shadowColor = "#eab308"
+        ctx.fillStyle = "#eab308"
+        ctx.beginPath()
+        ctx.arc(p.x, p.y, 6, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.restore()
+      }
     }
 
     // --- Jugador (sprite clipping LPC) ---

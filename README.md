@@ -128,3 +128,23 @@ src/
 - **Nacimiento desde el Centro**: El cálculo geométrico inicial del proyectil inicia en el punto central real de la colisión del mago (`x + 24`, `y + 24`).
 - **Glow nativo acelerado**: Se aplica `shadowBlur = 8` y `shadowColor = "#eab308"` nativo en el contexto 2D de canvas para lograr proyectiles incandescentes sin sobrecarga de nodos DOM.
 
+---
+
+### Refactorización Visual de Proyectiles — Asset de Bola de Fuego con Rotación Dinámica
+
+**Objetivo:** Reemplazar los círculos primitivos del jugador por un asset de bola de fuego (`fireball.png`) dibujado eficientemente y orientado dinámicamente según su trayectoria en el Canvas.
+
+**Archivos afectados:**
+
+| Archivo | Cambio |
+|---|---|
+| `src/scenes/DungeonScene.tsx` | Precarga del asset `fireball.png`, inicialización de `fireballSpriteRef` y renderizado rotado dinámicamente mediante matriz de transformación (`translate` + `rotate`) en el canvas draw loop. |
+| `src/assets/fireball.png` | **NUEVO** | Asset gráfico de bola de fuego (copia/adaptación optimizada) cargado dinámicamente. |
+
+**Decisiones de ingeniería:**
+
+- **Precarga Asíncrona Seguro**: La textura se carga al inicio con la utilidad `loadImage` y se guarda en `fireballSpriteRef`. Mientras carga, el sistema automáticamente realiza un fallback visual al círculo primitivo para evitar interrupciones o fallos.
+- **Rotación por Trigonometría del Vector de Movimiento**: Se determina la orientación exacta del proyectil calculando `Math.atan2(p.dy, p.dx)` de forma instantánea en cada frame.
+- **Transformación de Contexto Limpia**: Cada proyectil se dibuja guardando la matriz (`ctx.save`), trasladando el origen a la posición del proyectil (`ctx.translate`), rotando el contexto (`ctx.rotate`) y dibujando la imagen centrada (`-16, -16` para escala `32x32px`), seguido del correspondiente `ctx.restore` para no contaminar al resto de elementos.
+
+
