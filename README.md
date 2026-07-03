@@ -147,4 +147,26 @@ src/
 - **Rotación por Trigonometría del Vector de Movimiento**: Se determina la orientación exacta del proyectil calculando `Math.atan2(p.dy, p.dx)` de forma instantánea en cada frame.
 - **Transformación de Contexto Limpia**: Cada proyectil se dibuja guardando la matriz (`ctx.save`), trasladando el origen a la posición del proyectil (`ctx.translate`), rotando el contexto (`ctx.rotate`) y dibujando la imagen centrada (`-16, -16` para escala `32x32px`), seguido del correspondiente `ctx.restore` para no contaminar al resto de elementos.
 
+---
+
+### Tarea 3 — Migración del Jefe y Renderizado de Estados de Moore
+
+**Objetivo:** Trasladar la representación visual del jefe final de la mazmorra de la capa DOM al `<canvas>` (z-0), dibujando dinámicamente su sprite y su badge flotante analítico de la máquina de Moore utilizando texto nativo acelerado por hardware.
+
+**Archivos afectados:**
+
+| Archivo | Cambio |
+|---|---|
+| `src/core/gameStore.ts` | Añadidos `bossPosition` y `currentBossState` (con setters) para la sincronía centralizada de Zustand sin stale closures. |
+| `src/scenes/DungeonScene.tsx` | Precarga del spritesheet del jefe, sincronización de la física e inyección de la animación y badge analítico en el canvas loop. |
+| `src/components/game/Boss.tsx` | **ELIMINADO** | Componente DOM purgado; cero nodos HTML de jefe en el árbol. |
+
+**Decisiones de ingeniería:**
+
+- **Animación e Integridad de Sprite Clipping**: Mapeo dinámico de estados a filas del spritesheet LPC: `A` / `B` (Caminar a 9 frames con dirección calculada de `bossDirectionRef`) y `C` (Ataque a fila 2 de 7 frames).
+- **Centrado Geométrico Preciso**: El dibujo del cuadro 64x64 se desplaza con offset de `+8px` para quedar perfectamente centrado en su caja de colisión de 80x80px.
+- **Badge de Moore Aislado**: Dibujado con `ctx.fillText` usando Courier New, aislado de forma segura mediante `ctx.save()` / `ctx.restore()` y pintado en color magenta `#d946ef` si está furioso o blanco `#ffffff` por defecto.
+- **Cero Fallos Silenciosos**: Implementado fallback visual que dibuja un círculo rojo de radio 40px en caso de error o retraso en la carga del asset.
+
+
 

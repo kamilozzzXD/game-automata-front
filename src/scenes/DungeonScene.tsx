@@ -7,10 +7,10 @@ import {
   GiOpenTreasureChest,
   GiKey,
 } from "react-icons/gi"
-import { Boss } from "../components/game/Boss"
 import { MiniBoss } from "../components/game/MiniBoss"
 import { loadImage } from "../utils/assetLoader"
 import spritesheetUrl from "../assets/character-spritesheet.png"
+import bossSpritesheetUrl from "../assets/boss-character-spritesheet.png"
 import fireballUrl from "../assets/fireball.png"
 import { Portal } from "../components/game/Portal"
 import { Projectile } from "../components/game/Projectile"
@@ -809,6 +809,7 @@ export function DungeonScene() {
   const [bossPosition, setBossPosition] = useState<Vector2D>(initialBossPosition)
   const bossPositionRef = useRef<Vector2D>(initialBossPosition)
   bossPositionRef.current = bossPosition
+  const bossDirectionRef = useRef<Vector2D>({ x: 0, y: 1 })
 
   // Pon estos junto a tus otros useRef
   const bossCurrentSpeedRef = useRef(2.0)
@@ -828,6 +829,7 @@ export function DungeonScene() {
   useEffect(() => {
     setBossPosition(initialBossPosition)
     bossPositionRef.current = initialBossPosition
+    useGameStore.getState().setBossPosition(initialBossPosition)
 
     setMiniBossPosition(initialBossPosition)
     miniBossPositionRef.current = initialBossPosition
@@ -1350,8 +1352,15 @@ export function DungeonScene() {
             miniBossPositionRef.current = nextBossPos
             setMiniBossPosition(nextBossPos)
           } else {
+            const dx = nextBossPos.x - cur.x
+            const dy = nextBossPos.y - cur.y
+            const len = Math.sqrt(dx * dx + dy * dy)
+            if (len > 0) {
+              bossDirectionRef.current = { x: dx / len, y: dy / len }
+            }
             bossPositionRef.current = nextBossPos
             setBossPosition(nextBossPos)
+            useGameStore.getState().setBossPosition(nextBossPos)
           }
         }
 
@@ -1599,9 +1608,12 @@ export function DungeonScene() {
   const playerSpriteRef = useRef<HTMLImageElement | null>(null)
   // Ref a la textura de la bola de fuego
   const fireballSpriteRef = useRef<HTMLImageElement | null>(null)
+  // Ref a la textura del jefe
+  const bossSpriteRef = useRef<HTMLImageElement | null>(null)
   useEffect(() => {
     loadImage(spritesheetUrl).then((img) => { playerSpriteRef.current = img })
     loadImage(fireballUrl).then((img) => { fireballSpriteRef.current = img })
+    loadImage(bossSpritesheetUrl).then((img) => { bossSpriteRef.current = img })
   }, [])
 
   // Dibujo del lienzo base + jugador (sprite clipping LPC).
@@ -1784,6 +1796,60 @@ export function DungeonScene() {
       }
     }
 
+    // --- Jefe (sprite clipping LPC y badge analítico, Tarea 3) ---
+    if (bossRoomRef.current && state.bossLives > 0) {
+      const bossPos = state.bossPosition
+      const isAttacking = state.bossState === "C"
+      const bossFrames = isAttacking ? 7 : 9
+      const animSpeed = isAttacking ? 80 : (state.bossState === "B" ? 90 : 180)
+      const frameIndex = Math.floor(performance.now() / animSpeed) % bossFrames
+
+      // Determinar fila LPC: 8=Arriba, 9=Izquierda, 10=Abajo, 11=Derecha (o 2=Ataque)
+      let bossRow = 10
+      if (isAttacking) {
+        bossRow = 2
+      } else {
+        const bDir = bossDirectionRef.current
+        if (Math.abs(bDir.x) > Math.abs(bDir.y)) {
+          bossRow = bDir.x > 0 ? 11 : 9
+        } else {
+          bossRow = bDir.y < 0 ? 8 : 10
+        }
+      }
+
+      // Dibujo del Jefe (Con Fallback)
+      if (bossSpriteRef.current) {
+        const BOSS_SPRITE_SIZE = 64
+        // Centrado: Ajustar offsets para que el sprite de 64x64 calce centrado en la colisión física de 80x80 (offset +8)
+        const offsetX = bossPos.x + 8
+        const offsetY = bossPos.y + 8
+
+        ctx.drawImage(
+          bossSpriteRef.current,
+          frameIndex * BOSS_SPRITE_SIZE, bossRow * BOSS_SPRITE_SIZE, BOSS_SPRITE_SIZE, BOSS_SPRITE_SIZE,
+          offsetX, offsetY, BOSS_SPRITE_SIZE, BOSS_SPRITE_SIZE
+        )
+      } else {
+        // Fallback de seguridad
+        ctx.fillStyle = "#ef4444" // Rojo destructivo
+        ctx.beginPath()
+        ctx.arc(bossPos.x + 40, bossPos.y + 40, 40, 0, Math.PI * 2)
+        ctx.fill()
+      }
+
+      // Renderizado del Badge Analítico de Moore
+      ctx.save()
+      ctx.fillStyle = state.isBossFurious ? "#d946ef" : "#ffffff"
+      ctx.font = "bold 13px 'Courier New', monospace"
+      ctx.textAlign = "center"
+      ctx.fillText(
+        `Moore State: [${state.currentBossState}]`, 
+        bossPos.x + 40, 
+        bossPos.y - 12
+      )
+      ctx.restore()
+    }
+
     // --- Jugador (sprite clipping LPC) ---
     // Fila LPC: 8=Arriba, 9=Izquierda, 10=Abajo, 11=Derecha
     let row = 10
@@ -1859,10 +1925,7 @@ export function DungeonScene() {
           />
         )}
 
-        {/* Jefe (solo en la sala con tipo "jefe" sin hijos) */}
-        {bossPresent && bossLives > 0 && (
-          <Boss position={bossPosition} size={BOSS_SIZE} state={bossState} />
-        )}
+        {/* El jefe se dibuja directamente en el canvas (ver drawDungeon) */}
 
         {/* Mini-Boss (solo en salas secretas) */}
         {secretBossPresent && miniBossHp > 0 && currentNode && (

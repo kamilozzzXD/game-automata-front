@@ -187,6 +187,12 @@ type GameStore = {
   // Reset completo de la vida del jefe (al entrar a una sala del jefe nueva).
   resetBossHealth: () => void
 
+  // ----- Tarea 3 - Migración del Jefe -----
+  bossPosition: Vector2D
+  setBossPosition: (pos: Vector2D) => void
+  currentBossState: BossState
+  setCurrentBossState: (s: BossState) => void
+
   // Vida del Mini-Boss (Sala Secreta): una sola barra de 50 HP.
   miniBossHp: number
   applyMiniBossDamage: (nodeId: number, newHp: number) => void
@@ -377,9 +383,15 @@ export const useGameStore = create<GameStore>((set) => ({
   isPlayerInvisible: false,
   setPlayerInvisible: (b) => set({ isPlayerInvisible: b }),
 
+  // ----- Tarea 3 - Migración del Jefe -----
+  bossPosition: { x: 0, y: 0 },
+  setBossPosition: (pos) => set({ bossPosition: pos }),
+  currentBossState: "A",
+  setCurrentBossState: (s) => set({ currentBossState: s }),
+
   // IA del jefe
   bossState: "A",
-  setBossState: (s) => set({ bossState: s }),
+  setBossState: (s) => set({ bossState: s, currentBossState: s }),
   bossAction: "Patrullar",
   setBossAction: (a) => set({ bossAction: a }),
 
@@ -393,6 +405,7 @@ export const useGameStore = create<GameStore>((set) => ({
   resetBoss: () =>
     set({
       bossState: "A",
+      currentBossState: "A",
       bossAction: "Patrullar",
       isBossThinking: false,
       // Al entrar a una sala del jefe nueva, asumimos Vida 1 intacta:
