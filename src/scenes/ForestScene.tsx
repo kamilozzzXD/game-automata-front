@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { GiPineTree } from "react-icons/gi"
 import { Cauldron } from "../components/game/Cauldron"
-import { Player } from "../components/game/Player"
+import { loadImage } from "../utils/assetLoader"
+import spritesheetUrl from "../assets/character-spritesheet.png"
 import { Portal } from "../components/game/Portal"
 
 import { CraftingModal } from "../components/ui/CraftingModal"
@@ -13,6 +14,7 @@ import type { Interactable, Size } from "../types/game"
 import { useGameKeyboard } from "../hooks/useGameKeyboard"
 import { useHotbarControls } from "../hooks/useHotbarControls"
 import { usePlayerMovement } from "../hooks/usePlayerMovement"
+import { useCanvasLoop } from "../hooks/useCanvasLoop"
 import { generateDungeon } from "../services/api"
 import musicaForestUrl from "../assets/musica-forest.mp3"
 
@@ -46,9 +48,18 @@ const TREES = [
   { x: 600, y: 470, size: 65 },
 ]
 
+const GRID_SIZE = 40
+const SPRITE_SIZE = 64 // LPC frame: 64×64 px
+
 export function ForestScene() {
   const playerPosition = useGameStore((s) => s.playerPosition)
   const setPlayerPosition = useGameStore((s) => s.setPlayerPosition)
+
+  // Ref a la textura del jugador (evita drawImage con string crudo)
+  const playerSpriteRef = useRef<HTMLImageElement | null>(null)
+  useEffect(() => {
+    loadImage(spritesheetUrl).then((img) => { playerSpriteRef.current = img })
+  }, [])
   const isCraftingOpen = useGameStore((s) => s.isCraftingOpen)
   const openCrafting = useGameStore((s) => s.openCrafting)
 
@@ -179,28 +190,62 @@ export function ForestScene() {
     }
   }, [])
 
+  // Dibujo del lienzo base + jugador (sprite clipping LPC).
+  const drawForest = useCallback((ctx: CanvasRenderingContext2D, w: number, h: number) => {
+    // Fondo tonal verde-bosque
+    const bg = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w * 0.7)
+    bg.addColorStop(0, "#047857")
+    bg.addColorStop(0.55, "#065f46")
+    bg.addColorStop(1, "#022c22")
+    ctx.fillStyle = bg
+    ctx.fillRect(0, 0, w, h)
+
+    // Rejilla técnica de 40px (z-0, capa de referencia visual)
+    ctx.strokeStyle = "rgba(0, 0, 0, 0.12)"
+    ctx.lineWidth = 0.5
+    for (let x = 0; x <= w; x += GRID_SIZE) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke()
+    }
+    for (let y = 0; y <= h; y += GRID_SIZE) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke()
+    }
+
+    // --- Jugador (sprite clipping LPC) ---
+    const state = useGameStore.getState()
+    // Fila LPC: 8=Arriba, 9=Izquierda, 10=Abajo, 11=Derecha
+    let row = 10
+    if (Math.abs(state.lastDirection.x) > Math.abs(state.lastDirection.y)) {
+      row = state.lastDirection.x > 0 ? 11 : 9
+    } else {
+      row = state.lastDirection.y < 0 ? 8 : 10
+    }
+    // Animación gated por tiempo físico (sin setInterval ni estado React)
+    const frameIndex = state.isPlayerMoving ? Math.floor(performance.now() / 80) % 9 : 0
+
+    if (playerSpriteRef.current) {
+      // Opacidad reducida si el jugador es invisible
+      ctx.globalAlpha = state.isPlayerInvisible ? 0.4 : 1
+      ctx.drawImage(
+        playerSpriteRef.current,
+        frameIndex * SPRITE_SIZE, row * SPRITE_SIZE, SPRITE_SIZE, SPRITE_SIZE,
+        state.playerPosition.x - 8, state.playerPosition.y - 12, SPRITE_SIZE, SPRITE_SIZE,
+      )
+      ctx.globalAlpha = 1
+    }
+  // playerSpriteRef es un ref estable; no va en deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const canvasRef = useCanvasLoop({ width: WORLD_SIZE.width, height: WORLD_SIZE.height, draw: drawForest })
+
   return (
     <main className="flex min-h-screen w-full items-center justify-center bg-background p-4">
       <div
         className="relative overflow-hidden rounded-2xl border-2 border-border shadow-2xl"
         style={{ width: WORLD_SIZE.width, height: WORLD_SIZE.height }}
       >
-        {/* Suelo del claro: degradado verde + textura de hierba */}
-        <div
-          className="absolute inset-0"
-          style={{
-            background:
-              "radial-gradient(ellipse at center, #047857 0%, #065f46 55%, #022c22 100%)",
-          }}
-        />
-        <div
-          className="absolute inset-0 opacity-30 mix-blend-overlay"
-          style={{
-            backgroundImage:
-              "repeating-linear-gradient(45deg, rgba(0,0,0,0.15) 0px, rgba(0,0,0,0.15) 2px, transparent 2px, transparent 8px)",
-          }}
-          aria-hidden
-        />
+        {/* Canvas base: fondo + rejilla 40px en z-0 (capa inferior absoluta) */}
+        <canvas ref={canvasRef} className="absolute inset-0" style={{ zIndex: 0 }} aria-hidden />
 
         {/* Camino de tierra hacia el caldero */}
         <div
@@ -237,8 +282,7 @@ export function ForestScene() {
 
 
 
-        {/* Jugador */}
-        <Player position={playerPosition} size={PLAYER_SIZE} />
+        {/* El jugador se dibuja directamente en el canvas (ver drawForest) */}
 
         {/* HUD superpuesto (incluye el inventario y la PotionHotbar
             apilados en la columna izquierda - Sprint Polish-Pass T1). */}

@@ -9,7 +9,8 @@ import {
 } from "react-icons/gi"
 import { Boss } from "../components/game/Boss"
 import { MiniBoss } from "../components/game/MiniBoss"
-import { Player } from "../components/game/Player"
+import { loadImage } from "../utils/assetLoader"
+import spritesheetUrl from "../assets/character-spritesheet.png"
 import { Portal } from "../components/game/Portal"
 import { Projectile } from "../components/game/Projectile"
 import { DungeonRoom } from "../components/game/DungeonRoom"
@@ -26,6 +27,7 @@ import { center, distance, intersectsAABB, isWithinRadius } from "../core/geomet
 import { useGameKeyboard } from "../hooks/useGameKeyboard"
 import { useHotbarControls } from "../hooks/useHotbarControls"
 import { usePlayerMovement } from "../hooks/usePlayerMovement"
+import { useCanvasLoop } from "../hooks/useCanvasLoop"
 import { bossAction, combatHit } from "../services/api"
 import { parseBossState } from "../types/boss"
 import type { BossAction, BossState, BossStimulus } from "../types/boss"
@@ -35,6 +37,8 @@ import musicaUrl from "../assets/musica.mp3"
 
 const WORLD_SIZE: Size = { width: 960, height: 600 }
 const PLAYER_SIZE: Size = { width: 48, height: 48 }
+const GRID_SIZE = 40
+const SPRITE_SIZE = 64 // LPC frame: 64×64 px
 
 function pseudoRandom(seed: number) {
   const x = Math.sin(seed) * 10000;
@@ -1826,30 +1830,92 @@ export function DungeonScene() {
   // ---------------------------------------------------------------------------
   const isBossFurious = useGameStore((s) => s.isBossFurious)
 
+  // Ref para que el draw callback sepa si estamos en la sala del jefe
+  // (bossPresent es una variable local React, no del store).
+  const bossRoomRef = useRef(bossPresent)
+  bossRoomRef.current = bossPresent
+
+  // Ref a la textura del jugador (evita drawImage con string crudo)
+  const playerSpriteRef = useRef<HTMLImageElement | null>(null)
+  useEffect(() => {
+    loadImage(spritesheetUrl).then((img) => { playerSpriteRef.current = img })
+  }, [])
+
+  // Dibujo del lienzo base + jugador (sprite clipping LPC).
+  const drawDungeon = useCallback((ctx: CanvasRenderingContext2D, w: number, h: number) => {
+    // Fondo plano de mazmorra (piedra oscura)
+    const bg = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w * 0.75)
+    bg.addColorStop(0, "#1e293b")
+    bg.addColorStop(0.6, "#0f172a")
+    bg.addColorStop(1, "#020617")
+    ctx.fillStyle = bg
+    ctx.fillRect(0, 0, w, h)
+
+    // Rejilla técnica de 40px
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.04)"
+    ctx.lineWidth = 0.5
+    for (let x = 0; x <= w; x += GRID_SIZE) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke()
+    }
+    for (let y = 0; y <= h; y += GRID_SIZE) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke()
+    }
+
+    // Vignette spotlight de antorcha (solo fuera de la sala del jefe)
+    const state = useGameStore.getState()
+    if (!bossRoomRef.current) {
+      const cx = state.playerPosition.x + PLAYER_SIZE.width / 2
+      const cy = state.playerPosition.y + PLAYER_SIZE.height / 2
+      const vign = ctx.createRadialGradient(cx, cy, 28, cx, cy, 140)
+      vign.addColorStop(0, "rgba(3,7,18,0)")
+      vign.addColorStop(1, "rgba(3,7,18,0.98)")
+      ctx.fillStyle = vign
+      ctx.fillRect(0, 0, w, h)
+    }
+
+    // --- Jugador (sprite clipping LPC) ---
+    // Fila LPC: 8=Arriba, 9=Izquierda, 10=Abajo, 11=Derecha
+    let row = 10
+    if (Math.abs(state.lastDirection.x) > Math.abs(state.lastDirection.y)) {
+      row = state.lastDirection.x > 0 ? 11 : 9
+    } else {
+      row = state.lastDirection.y < 0 ? 8 : 10
+    }
+    // Animación gated por tiempo físico (sin setInterval ni estado React)
+    const frameIndex = state.isPlayerMoving ? Math.floor(performance.now() / 80) % 9 : 0
+
+    if (playerSpriteRef.current) {
+      // Opacidad reducida si el jugador es invisible
+      ctx.globalAlpha = state.isPlayerInvisible ? 0.4 : 1
+      ctx.drawImage(
+        playerSpriteRef.current,
+        frameIndex * SPRITE_SIZE, row * SPRITE_SIZE, SPRITE_SIZE, SPRITE_SIZE,
+        state.playerPosition.x - 8, state.playerPosition.y - 12, SPRITE_SIZE, SPRITE_SIZE,
+      )
+      ctx.globalAlpha = 1
+    }
+  // playerSpriteRef es un ref estable; no va en deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const canvasRef = useCanvasLoop({ width: WORLD_SIZE.width, height: WORLD_SIZE.height, draw: drawDungeon })
+
   return (
     <main className="flex min-h-screen w-full items-center justify-center bg-background p-4">
       <div
         className="relative overflow-hidden rounded-2xl border-2 border-border shadow-2xl"
         style={{ width: WORLD_SIZE.width, height: WORLD_SIZE.height }}
       >
+        {/* Canvas base: fondo + vignette + jugador (todo en el mismo buffer) */}
+        <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none" style={{ zIndex: 0 }} aria-hidden />
+
         {/* Habitacion (fondo + decoracion segun tipo) */}
         {currentNode && (
           <DungeonRoom type={currentNode.tipo} worldSize={WORLD_SIZE} />
         )}
 
-        {/* Capa de Oscuridad con Spotlight de Antorcha (z-index: 12) - Se oculta únicamente en la sala del jefe final */}
-        {!bossPresent && (
-          <div
-            className="pointer-events-none absolute inset-0"
-            style={{
-              background: `radial-gradient(circle 140px at ${playerPosition.x + PLAYER_SIZE.width / 2}px ${playerPosition.y + PLAYER_SIZE.height / 2}px, transparent 20%, rgba(3, 7, 18, 0.98) 100%)`,
-              zIndex: 12,
-            }}
-          />
-        )}
 
-        {/* Portal de salida (solo en la sala inicial). Sustituye al boton
-            de debug que rompia la inmersion. */}
+        {/* Portal de salida (solo en la sala inicial) */}
         {isInInicio && (
           <Portal
             position={EXIT_PORTAL.position}
@@ -2013,8 +2079,7 @@ export function DungeonScene() {
           />
         ))}
 
-        {/* Jugador */}
-        <Player position={playerPosition} size={PLAYER_SIZE} />
+        {/* El jugador se dibuja directamente en el canvas (ver drawDungeon) */}
 
         {/* Tarea 3.3: Barra de vida del Jefe (solo en la sala del jefe) */}
         {bossPresent && bossLives > 0 && <BossHealthBar />}

@@ -1,4 +1,3 @@
-import type { CSSProperties } from "react"
 import {
   //GiOpenTreasureChest,
   GiPortal,
@@ -21,58 +20,16 @@ type Props = {
 export function DungeonRoom({ type, worldSize }: Props) {
   return (
     <>
-      {/* Suelo / fondo principal */}
-      <div className="absolute inset-0" style={getRoomStyle(type)} aria-hidden />
+      {/* Fondo: canvas maneja el piso; este div solo ancla el z-index */}
+      <div className="absolute inset-0" aria-hidden />
 
-      {/* Textura de adoquin sutil para todas las salas */}
-      <div
-        className="absolute inset-0 opacity-25 mix-blend-overlay"
-        style={{
-          backgroundImage:
-            "repeating-linear-gradient(0deg, rgba(0,0,0,0.25) 0 2px, transparent 2px 24px), repeating-linear-gradient(90deg, rgba(0,0,0,0.25) 0 2px, transparent 2px 24px)",
-        }}
-        aria-hidden
-      />
-
-      {/* Decoraciones especificas */}
+      {/* Decoraciones específicas */}
       {type === "inicio" && <InicioDecor worldSize={worldSize} />}
       {type === "pasillo" && <PasilloDecor worldSize={worldSize} />}
       {type === "sala" && <SalaDecor worldSize={worldSize} />}
       {type === "jefe" && <JefeDecor worldSize={worldSize} />}
     </>
   )
-}
-
-// ---------------------------------------------------------------------------
-// Estilos de fondo por tipo. Paleta tematica acotada (3-5 colores totales).
-// ---------------------------------------------------------------------------
-function getRoomStyle(type: DungeonNodeType): CSSProperties {
-  switch (type) {
-    case "inicio":
-      // Verde pantanoso oscuro (transicion natural desde el bosque).
-      return {
-        background:
-          "radial-gradient(ellipse at center, #1f3a2a 0%, #0f1e16 60%, #06100b 100%)",
-      }
-    case "pasillo":
-      // Piedra gris fria con corredor mas claro al centro.
-      return {
-        background:
-          "linear-gradient(180deg, #0f0e0c 0%, #1c1a18 18%, #2a2724 50%, #1c1a18 82%, #0f0e0c 100%)",
-      }
-    case "sala":
-      // Camara mas calida, piedra ocre.
-      return {
-        background:
-          "radial-gradient(ellipse at center, #3a342b 0%, #25201a 60%, #14110d 100%)",
-      }
-    case "jefe":
-      // Rojo profundo, presagio.
-      return {
-        background:
-          "radial-gradient(ellipse at center, #4a1818 0%, #260909 60%, #110404 100%)",
-      }
-  }
 }
 
 // ---------------------------------------------------------------------------
