@@ -13,7 +13,6 @@ import spritesheetUrl from "../assets/character-spritesheet.png"
 import bossSpritesheetUrl from "../assets/boss-character-spritesheet.png"
 import fireballUrl from "../assets/fireball.png"
 import { Portal } from "../components/game/Portal"
-import { Projectile } from "../components/game/Projectile"
 import { DungeonRoom } from "../components/game/DungeonRoom"
 import { IngredientItem } from "../components/game/IngredientItem"
 import { BossHealthBar } from "../components/ui/BossHealthBar"
@@ -721,7 +720,7 @@ export function DungeonScene() {
                 })
                 if (res.hp_resultante === 0) {
                   useGameStore.getState().resetBoss()
-                  setBossProyectiles([])
+                  bossProyectilesRef.current = []
                 }
               }).catch((err) => {
                 console.error("[v0] Error en combatHit (hazard):", err)
@@ -1174,9 +1173,16 @@ export function DungeonScene() {
   //          console.log de impacto y se elimina. La logica de HP del
   //          jugador queda para una tarea posterior (3.3).
   // ---------------------------------------------------------------------------
-  const [bossProyectiles, setBossProyectiles] = useState<BossProjectileState[]>([])
-  const bossProyectilesRef = useRef<BossProjectileState[]>([])
-  bossProyectilesRef.current = bossProyectiles
+  interface BossProjectile {
+    id: number;
+    x: number;
+    y: number;
+    dx: number;
+    dy: number;
+    variant: "boss-basic" | "boss-heavy" | "boss-poison";
+    distanciaRecorrida: number;
+  }
+  const bossProyectilesRef = useRef<BossProjectile[]>([]);
   // Id incremental para evitar choques entre proyectiles instanciados en el
   // mismo frame (las 8 esquirlas de la fragmentacion lo necesitan).
   const bossProjectileIdRef = useRef<number>(0)
@@ -1189,7 +1195,7 @@ export function DungeonScene() {
   useEffect(() => {
     if (!bossPresent && !secretBossPresent) {
       // Salimos de toda sala con enemigo: limpiamos proyectiles vivos.
-      if (bossProyectilesRef.current.length > 0) setBossProyectiles([])
+      bossProyectilesRef.current = []
       patrolTargetRef.current = null
       lastBossShotAtRef.current = 0
       // Reiniciamos los estados de la metralleta si salimos de la sala
@@ -1210,7 +1216,6 @@ export function DungeonScene() {
       const speedMult = isMini ? 0.5 : 1
 
       let nextBossPos: Vector2D = cur
-      let pendingSpawn: BossProjectileState | null = null
 
       if (isAlive) {
         // -------- 1) Movimiento del jefe/mini-jefe segun el estado de Moore --------
@@ -1372,12 +1377,30 @@ export function DungeonScene() {
             if (miniType === "witch") {
               if (now - lastBossShotAtRef.current >= MINI_BOSS_SHOOT_COOLDOWN_MS) {
                 lastBossShotAtRef.current = now
-                pendingSpawn = buildBossShotAtPlayer(false, cur, "poison")
+                const proj = buildBossShotAtPlayer(false, cur, "poison")
+                if (proj) {
+                  bossProyectilesRef.current.push({
+                    id: proj.id,
+                    x: proj.x, y: proj.y,
+                    dx: proj.dx, dy: proj.dy,
+                    variant: "boss-poison",
+                    distanciaRecorrida: 0
+                  })
+                }
               }
             } else {
               if (now - lastBossShotAtRef.current >= MINI_BOSS_SHOOT_COOLDOWN_MS) {
                 lastBossShotAtRef.current = now
-                pendingSpawn = buildBossShotAtPlayer(false, cur, "basic")
+                const proj = buildBossShotAtPlayer(false, cur, "basic")
+                if (proj) {
+                  bossProyectilesRef.current.push({
+                    id: proj.id,
+                    x: proj.x, y: proj.y,
+                    dx: proj.dx, dy: proj.dy,
+                    variant: "boss-basic",
+                    distanciaRecorrida: 0
+                  })
+                }
               }
             }
           } else {
@@ -1388,14 +1411,20 @@ export function DungeonScene() {
             if (now - lastBossShotAtRef.current >= currentCooldown) {
               lastBossShotAtRef.current = now
               // Le pasamos el parámetro extra "isMachineGun" para evitar pesados en la ráfaga
-              pendingSpawn = buildBossShotAtPlayer(furious, cur, "basic", isMachineGunRef.current)
+              const proj = buildBossShotAtPlayer(furious, cur, "basic", isMachineGunRef.current)
+              if (proj) {
+                bossProyectilesRef.current.push({
+                  id: proj.id,
+                  x: proj.x, y: proj.y,
+                  dx: proj.dx, dy: proj.dy,
+                  variant: proj.kind === "heavy" ? "boss-heavy" : "boss-basic",
+                  distanciaRecorrida: 0
+                })
+              }
             }
           }
         }
       } // Fin if isAlive
-
-      // -------- 3) Movimiento de los proyectiles del jefe + colisiones --------
-      stepBossProjectiles(snap.playerPosition, pendingSpawn)
 
       rafId = requestAnimationFrame(tick)
     }
@@ -1478,114 +1507,7 @@ export function DungeonScene() {
       }
     }
 
-    // Helper: avanza todos los proyectiles del jefe, los descarta si
-    // expiran (con fragmentacion para los pesados) y revisa AABB contra el jugador.
-    function stepBossProjectiles(
-      playerPos: Vector2D,
-      pendingSpawn: BossProjectileState | null,
-    ) {
-      const current = bossProyectilesRef.current
-      if (current.length === 0 && !pendingSpawn) return
 
-      const esquirlasGeneradas: BossProjectileState[] = []
-      const next: BossProjectileState[] = []
-
-      for (const p of current) {
-        const speed =
-          p.kind === "heavy"
-            ? BOSS_HEAVY_PROJECTILE_SPEED
-            : BOSS_BASIC_PROJECTILE_SPEED
-        const maxDist =
-          p.kind === "heavy"
-            ? BOSS_HEAVY_PROJECTILE_MAX_DISTANCE
-            : BOSS_BASIC_PROJECTILE_MAX_DISTANCE
-        const projSize =
-          p.kind === "heavy"
-            ? BOSS_HEAVY_PROJECTILE_SIZE
-            : BOSS_BASIC_PROJECTILE_SIZE
-
-        const nx = p.x + p.dx * speed
-        const ny = p.y + p.dy * speed
-        const nDist = p.distanciaRecorrida + speed
-
-        const fueraDelMundo =
-          nx < -projSize.width ||
-          nx > WORLD_SIZE.width + projSize.width ||
-          ny < -projSize.height ||
-          ny > WORLD_SIZE.height + projSize.height
-        if (fueraDelMundo) continue
-
-        if (nDist > maxDist) {
-          if (p.kind === "heavy") {
-            for (const dir of ESQUIRLAS_8_DIR) {
-              bossProjectileIdRef.current += 1
-              esquirlasGeneradas.push({
-                id: bossProjectileIdRef.current,
-                x: nx,
-                y: ny,
-                dx: dir.dx,
-                dy: dir.dy,
-                distanciaRecorrida: 0,
-                kind: "basic",
-              })
-            }
-          }
-          continue
-        }
-
-        const projPos: Vector2D = {
-          x: nx - projSize.width / 2,
-          y: ny - projSize.height / 2,
-        }
-        if (intersectsAABB(projPos, projSize, playerPos, PLAYER_SIZE)) {
-          const isShielded = useGameStore.getState().isShieldActive
-          if (isShielded) continue
-
-          const damage = p.kind === "heavy"
-            ? BOSS_HEAVY_PROJECTILE_DAMAGE
-            : p.kind === "poison"
-              ? 15
-              : BOSS_BASIC_PROJECTILE_DAMAGE
-          const currentPlayerHp = useGameStore.getState().playerHp
-
-          if (currentPlayerHp > 0) {
-            void combatHit({
-              hp_actual: currentPlayerHp,
-              dano_recibido: damage,
-            }).then((res) => {
-              useGameStore.getState().setPlayerHp(res.hp_resultante)
-              useGameStore.getState().setPlayerHealthFlash(true)
-              if (p.kind === "poison") {
-                pushNotification({
-                  kind: "error",
-                  message: "¡La pócima de veneno de la Bruja te impacta! -15 HP (Sustracción propia de Turing)",
-                })
-              }
-              if (res.hp_resultante === 0) {
-                useGameStore.getState().resetBoss()
-                setBossProyectiles([])
-              }
-            }).catch((err) => {
-              console.error("[v0] Error en combatHit (jugador):", err)
-            })
-          }
-          continue
-        }
-
-        next.push({ ...p, x: nx, y: ny, distanciaRecorrida: nDist })
-      }
-
-      const result: BossProjectileState[] = next
-      if (esquirlasGeneradas.length > 0) result.push(...esquirlasGeneradas)
-      if (pendingSpawn) result.push(pendingSpawn)
-
-      if (
-        result.length !== current.length ||
-        result.some((p, i) => p !== current[i])
-      ) {
-        setBossProyectiles(result)
-      }
-    }
 
     rafId = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(rafId)
@@ -1646,6 +1568,102 @@ export function DungeonScene() {
       vign.addColorStop(1, "rgba(3,7,18,0.98)")
       ctx.fillStyle = vign
       ctx.fillRect(0, 0, w, h)
+    }
+
+    // --- Proyectiles del Jefe (Batch Drawing & Physics, Tarea 5) ---
+    const bossProjs = bossProyectilesRef.current
+    for (let i = bossProjs.length - 1; i >= 0; i--) {
+      const p = bossProjs[i]
+      const speed = p.variant === "boss-heavy" ? BOSS_HEAVY_PROJECTILE_SPEED : BOSS_BASIC_PROJECTILE_SPEED
+      p.x += p.dx * speed
+      p.y += p.dy * speed
+      p.distanciaRecorrida += speed
+
+      // Lógica de Fragmentación (Bullet-Hell)
+      if (p.distanciaRecorrida > (p.variant === "boss-heavy" ? BOSS_HEAVY_PROJECTILE_MAX_DISTANCE : BOSS_BASIC_PROJECTILE_MAX_DISTANCE) || p.x < -40 || p.x > w + 40 || p.y < -40 || p.y > h + 40) {
+        if (p.variant === "boss-heavy") {
+          // Inyección inmediata de las 8 esquirlas en el array
+          ESQUIRLAS_8_DIR.forEach(dir => {
+            bossProjs.push({
+              id: performance.now() + Math.random(),
+              x: p.x, y: p.y,
+              dx: dir.dx, dy: dir.dy,
+              variant: "boss-basic",
+              distanciaRecorrida: 0
+            })
+          })
+        }
+        bossProjs.splice(i, 1)
+        continue
+      }
+
+      // Colisión AABB con el jugador
+      const pSize = p.variant === "boss-heavy" ? BOSS_HEAVY_PROJECTILE_SIZE : BOSS_BASIC_PROJECTILE_SIZE
+      const projPos: Vector2D = { x: p.x - pSize.width / 2, y: p.y - pSize.height / 2 }
+      const playerPos = state.playerPosition
+
+      if (intersectsAABB(projPos, pSize, playerPos, PLAYER_SIZE)) {
+        const isShielded = state.isShieldActive
+        if (!isShielded) {
+          const damage = p.variant === "boss-heavy"
+            ? BOSS_HEAVY_PROJECTILE_DAMAGE
+            : p.variant === "boss-poison"
+              ? 15
+              : BOSS_BASIC_PROJECTILE_DAMAGE
+          const currentPlayerHp = state.playerHp
+
+          if (currentPlayerHp > 0) {
+            void combatHit({
+              hp_actual: currentPlayerHp,
+              dano_recibido: damage,
+            }).then((res) => {
+              useGameStore.getState().setPlayerHp(res.hp_resultante)
+              useGameStore.getState().setPlayerHealthFlash(true)
+              if (p.variant === "boss-poison") {
+                pushNotification({
+                  kind: "error",
+                  message: "¡La pócima de veneno de la Bruja te impacta! -15 HP (Sustracción propia de Turing)",
+                })
+              }
+              if (res.hp_resultante === 0) {
+                useGameStore.getState().resetBoss()
+                bossProyectilesRef.current = []
+              }
+            }).catch((err) => {
+              console.error("[v0] Error en combatHit (jugador):", err)
+            })
+          }
+        }
+        bossProjs.splice(i, 1)
+        continue
+      }
+
+      // Dibujo Acelerado por GPU (Gradiente Radial)
+      const isHeavy = p.variant === "boss-heavy"
+      const isPoison = p.variant === "boss-poison"
+      const radius = isHeavy ? 24 : 10
+
+      ctx.save()
+      ctx.beginPath()
+      ctx.arc(p.x, p.y, radius, 0, Math.PI * 2)
+
+      const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius)
+      gradient.addColorStop(0, "#ffffff") // Núcleo caliente
+      gradient.addColorStop(0.4, isHeavy ? "#d946ef" : (isPoison ? "#10b981" : "#ef4444")) // Color principal
+      gradient.addColorStop(1, isHeavy ? "rgba(126, 34, 206, 0)" : (isPoison ? "rgba(16, 185, 129, 0)" : "rgba(239, 68, 68, 0)")); // Borde difuminado
+
+      ctx.fillStyle = gradient
+
+      if (isHeavy) {
+        ctx.shadowBlur = 15
+        ctx.shadowColor = "#a855f7" // Resplandor inestable
+      } else if (isPoison) {
+        ctx.shadowBlur = 8
+        ctx.shadowColor = "#34d399"
+      }
+
+      ctx.fill()
+      ctx.restore()
     }
 
     // --- Proyectiles del jugador (Batch Drawing, Tarea 4) ---
@@ -1937,28 +1955,7 @@ export function DungeonScene() {
           />
         )}
 
-        {/* Proyectiles del JEFE (Tarea 3.2).
-            Van debajo de los del jugador para que en una colision visual
-            el del jugador "tape" al del jefe. */}
-        {bossProyectiles.map((p) => (
-          <Projectile
-            key={`boss-${p.id}`}
-            x={p.x}
-            y={p.y}
-            size={
-              p.kind === "heavy"
-                ? BOSS_HEAVY_PROJECTILE_SIZE.width
-                : BOSS_BASIC_PROJECTILE_SIZE.width
-            }
-            variant={
-              p.kind === "heavy"
-                ? "boss-heavy"
-                : p.kind === "poison"
-                  ? "boss-poison"
-                  : "boss-basic"
-            }
-          />
-        ))}
+        {/* Proyectiles del jefe: dibujados en canvas (ver drawDungeon) */}
 
         {/* Proyectiles del jugador: dibujados en canvas (ver drawDungeon) */}
 

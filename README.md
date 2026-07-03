@@ -168,5 +168,25 @@ src/
 - **Badge de Moore Aislado**: Dibujado con `ctx.fillText` usando Courier New, aislado de forma segura mediante `ctx.save()` / `ctx.restore()` y pintado en color magenta `#d946ef` si está furioso o blanco `#ffffff` por defecto.
 - **Cero Fallos Silenciosos**: Implementado fallback visual que dibuja un círculo rojo de radio 40px en caso de error o retraso en la carga del asset.
 
+---
+
+### Tarea 5 — Proyectiles del Jefe y Fragmentación en Modo Furia
+
+**Objetivo:** Migrar todo el sistema de combate a distancia del jefe al `<canvas>`. Implementar el renderizado visual de proyectiles Básicos, Pesados (con resplandor) y Venenosos usando gradientes radiales nativos, y procesar la fragmentación matemática en 8 esquirlas (Bullet-Hell) sin causar caídas de FPS.
+
+**Archivos afectados:**
+
+| Archivo | Cambio |
+|---|---|
+| `src/scenes/DungeonScene.tsx` | Eliminado el estado de proyectiles del jefe reactivo, modificado el disparo de la IA y el mini-jefe para inyectar directamente en `bossProyectilesRef`, e implementadas la física, colisiones, fragmentación y pintado de gradientes de color en el canvas draw loop. |
+
+**Decisiones de ingeniería:**
+
+- **Física y Fragmentación en una Sola Pasada**: Las físicas y colisiones de los proyectiles se computan e iteran en sentido inverso (`for (let i = bossProjs.length - 1; i >= 0; i--)`). Al expirar un proyectil de tipo `boss-heavy` por haber recorrido su distancia máxima, se inyectan en el mismo array 8 proyectiles de tipo `boss-basic` en direcciones unitarias diagonales y cardinales.
+- **Renderizado por Hardware con Gradientes Radiales**: Cada proyectil se dibuja usando un gradiente radial (`ctx.createRadialGradient`) con núcleo caliente blanco y difuminado exterior correspondiente a su naturaleza (`#d946ef` / magenta para Pesado, `#ef4444` / rojo para Básico y `#10b981` / verde para Veneno).
+- **Glow Específico en GPU**: Se aplican efectos inestables de resplandor mediante `shadowBlur = 15` y `shadowColor = "#a855f7"` solo para los proyectiles de tipo pesado.
+- **Colisiones AABB sin Bloqueos**: Detección de colisiones instantánea con `intersectsAABB` entre la caja del jugador y el proyectil. Si el jugador es impactado y no está protegido por escudo, se efectúa la sustracción de vida asíncrona vía API Turing y se notifica visualmente.
+
+
 
 
