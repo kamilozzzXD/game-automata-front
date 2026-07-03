@@ -275,6 +275,49 @@ src/
 - **Resize Debouncing**: El evento `resize` está regulado con un debounce de 100ms tanto en el hook de detección como en el componente principal, reduciendo significativamente la cantidad de recálculos de estilo y actualizaciones de estado de React durante redimensionados.
 - **API Fullscreen Segura**: La función `toggleFullscreen` evalúa y soporta alternativas vendor-prefixed (`webkit`, `moz`, `ms`) para extender la compatibilidad, atrapando cualquier error con `try/catch` para evitar caídas catastróficas en iOS Safari.
 
+---
+
+### Tarea 9 — Interfaz Táctil: Botones de Acción Superpuestos (Mobile HUD)
+
+**Objetivo:** Crear un panel de controles virtuales translúcidos para dispositivos móviles que permita ejecutar acciones principales (Disparar, Interactuar, Usar Poción, Inventario) con cero latencia y evitar bugs de teclas pegadas.
+
+**Archivos afectados:**
+
+| Archivo | Cambio |
+|---|---|
+| `src/components/ui/TouchControls.tsx` | **NUEVO** | Creado el componente `TouchControls` para el pad de acciones táctiles, mapeando pointer events a KeyboardEvents sintéticos. |
+| `src/App.tsx` | Importado e inyectado el componente `<TouchControls />` dentro de la base del *Ghost Wrapper* para heredar la escala de lienzo dinámica. |
+
+- **Decisiones de ingeniería:**
+
+- **Despacho de Eventos Sintéticos de Teclado**: Al simular `KeyboardEvent('keydown')` y `KeyboardEvent('keyup')` directamente sobre `window`, el código del juego interactivo no requiere de refactorizaciones extensas. Se acopla de forma transparente a los sistemas existentes de combate y recolección.
+- **Ciclo Completo de Pointer Events**: Para evitar que las teclas queden permanentemente presionadas ("teclas pegadas" o disparo infinito), se vincula el inicio en `onPointerDown` con la finalización unificada en `onPointerUp`, `onPointerLeave` y `onPointerCancel`.
+- **Cero Latencia**: Al usar pointer events en lugar del retraso artificial de ~300ms de `onClick` en teléfonos, se garantiza una respuesta instantánea y de alto rendimiento en combates móviles.
+- **Layout de Diamante Ergonómico y Estética Glassmorphism**: Los botones de acción se agrupan en un contenedor de `w-40 h-40` (`160x160px`) en forma de diamante (estilo gamepad tradicional), usando iconos SVG vectoriales sin texto sobre un fondo de cristal oscuro translúcido (`bg-slate-900/40 backdrop-blur-md border border-white/20`) y feedback táctil inmediato (`active:scale-95`).
+
+---
+
+### Tarea 10 — Degradación Gráfica Dinámica (Mobile Fallback) & Monitor de Rendimiento (FPS Counter)
+
+**Objetivo:** Implementar un "Modo Rendimiento" automático en dispositivos móviles para mitigar la sobrecarga en la GPU limitando la resolución y deshabilitando operaciones costosas del Canvas 2D. Además, añadir un monitor científico de rendimiento (contador de FPS) dibujado en tiempo real directamente en el canvas con un semáforo visual de color.
+
+**Archivos afectados:**
+
+| Archivo | Cambio |
+|---|---|
+| `src/hooks/useCanvasLoop.ts` | Añadido soporte para limitar el `dpr` (pixel ratio) a un máximo de `1.25` en dispositivos móviles. Implementado el cálculo de FPS acumulado y dibujado del overlay de FPS en tiempo real directamente al final de cada frame en `x: 10, y: 20` sin React state. |
+| `src/scenes/DungeonScene.tsx` | Importado `useMobileDetection` y configurado un `isMobileRef`. Deshabilitadas de forma condicional las propiedades `shadowBlur` y `shadowColor` de los proyectiles y simplificados los gradientes radiales del jefe a rellenos sólidos en móviles. |
+| `src/scenes/ForestScene.tsx` | Importado `useMobileDetection` y pasado `isMobile` al hook `useCanvasLoop` para habilitar el límite de DPR. |
+
+**Decisiones de ingeniería:**
+
+- **Límite de Densidad de Píxeles (High-DPI Capping)**: En pantallas móviles de alta densidad, renderizar un canvas a 60 FPS satura la GPU móvil. Limitar la escala a `1.25` de DPR reduce drásticamente los píxeles procesados sin pérdida apreciable de nitidez.
+- **Desactivación de ShadowBlur (Kill-Switch)**: El renderizado de sombras desenfocadas (`shadowBlur`) requiere cálculos de desenfoque gaussiano de alto costo por software. Desactivarlas en móviles elimina el cuello de botella.
+- **Simplificación de Relleno en Proyectiles**: Reemplazar gradientes radiales continuos por rellenos sólidos (`fillStyle`) en proyectiles del jefe elimina la sobrecarga de texturas procedimentales a alta tasa de disparo.
+- **Monitor de Rendimiento Cero React State**: El cálculo de FPS se realiza midiendo los cuadros por cada período de refresco de 500ms utilizando `performance.now()`. Al dibujarse directamente en el contexto del canvas con `ctx.fillText`, se evita desencadenar re-renders de React y el parpadeo constante, y se implementa una codificación semáforo de colores (Verde > 45 FPS, Amarillo > 30 FPS, Rojo <= 30 FPS).
+
+
+
 
 
 

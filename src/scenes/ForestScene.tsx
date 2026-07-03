@@ -15,6 +15,7 @@ import { useGameKeyboard } from "../hooks/useGameKeyboard"
 import { useHotbarControls } from "../hooks/useHotbarControls"
 import { usePlayerMovement } from "../hooks/usePlayerMovement"
 import { useCanvasLoop } from "../hooks/useCanvasLoop"
+import { useMobileDetection } from "../hooks/useMobileDetection"
 import { generateDungeon } from "../services/api"
 import musicaForestUrl from "../assets/musica-forest.mp3"
 
@@ -70,7 +71,7 @@ export function ForestScene() {
   const setCurrentScene = useGameStore((s) => s.setCurrentScene)
   const pushNotification = useGameStore((s) => s.pushNotification)
 
-
+  const { isMobile } = useMobileDetection()
 
   // Pausamos el movimiento mientras se carga la mazmorra o el modal de crafteo esta abierto.
   const movementEnabled = !isCraftingOpen && !isGeneratingDungeon
@@ -424,7 +425,7 @@ export function ForestScene() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const canvasRef = useCanvasLoop({ width: WORLD_SIZE.width, height: WORLD_SIZE.height, draw: drawForest })
+  const canvasRef = useCanvasLoop({ width: WORLD_SIZE.width, height: WORLD_SIZE.height, draw: drawForest, isMobile })
 
   return (
     <div

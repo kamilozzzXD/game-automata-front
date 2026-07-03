@@ -6,6 +6,7 @@ import { DeathScreen } from "./components/ui/DeathScreen"
 import { VictoryScreen } from "./components/ui/VictoryScreen"
 import { IntroCinematic } from "./components/ui/IntroCinematic"
 import { debounce } from "./utils/debounce"
+import { TouchControls } from "./components/ui/TouchControls"
 
 function App() {
   const currentScene = useGameStore((s) => s.currentScene)
@@ -54,6 +55,7 @@ function App() {
         {currentScene === "dungeon" ? <DungeonScene /> : <ForestScene />}
         <DeathScreen />
         <VictoryScreen />
+        <TouchControls />
       </div>
     </main>
   )

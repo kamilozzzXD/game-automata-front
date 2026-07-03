@@ -28,6 +28,7 @@ import { useGameKeyboard } from "../hooks/useGameKeyboard"
 import { useHotbarControls } from "../hooks/useHotbarControls"
 import { usePlayerMovement } from "../hooks/usePlayerMovement"
 import { useCanvasLoop } from "../hooks/useCanvasLoop"
+import { useMobileDetection } from "../hooks/useMobileDetection"
 import { bossAction, combatHit } from "../services/api"
 import { parseBossState } from "../types/boss"
 import type { BossAction, BossState, BossStimulus } from "../types/boss"
@@ -502,6 +503,10 @@ export function DungeonScene() {
     setSalaActualId(start.id)
     setPlayerPosition(CENTER_SPAWN)
   }, [dungeon, salaActualId, setPlayerPosition])
+
+  const { isMobile } = useMobileDetection()
+  const isMobileRef = useRef(isMobile)
+  isMobileRef.current = isMobile
 
   // Movimiento del jugador (mismo hook que el bosque).
   const movementEnabled = salaActualId !== null && !isGenerating && playerHp > 0 && !isVictoryAchieved
@@ -1787,19 +1792,23 @@ export function DungeonScene() {
       ctx.beginPath()
       ctx.arc(p.x, p.y, radius, 0, Math.PI * 2)
 
-      const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius)
-      gradient.addColorStop(0, "#ffffff") // Núcleo caliente
-      gradient.addColorStop(0.4, isHeavy ? "#d946ef" : (isPoison ? "#10b981" : "#ef4444")) // Color principal
-      gradient.addColorStop(1, isHeavy ? "rgba(126, 34, 206, 0)" : (isPoison ? "rgba(16, 185, 129, 0)" : "rgba(239, 68, 68, 0)")); // Borde difuminado
+      // Si es móvil, simplifica a un relleno de color sólido y desactiva sombras para ahorrar GPU
+      if (isMobileRef.current) {
+        ctx.fillStyle = isHeavy ? "#d946ef" : (isPoison ? "#10b981" : "#ef4444")
+      } else {
+        const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius)
+        gradient.addColorStop(0, "#ffffff") // Núcleo caliente
+        gradient.addColorStop(0.4, isHeavy ? "#d946ef" : (isPoison ? "#10b981" : "#ef4444")) // Color principal
+        gradient.addColorStop(1, isHeavy ? "rgba(126, 34, 206, 0)" : (isPoison ? "rgba(16, 185, 129, 0)" : "rgba(239, 68, 68, 0)")); // Borde difuminado
+        ctx.fillStyle = gradient
 
-      ctx.fillStyle = gradient
-
-      if (isHeavy) {
-        ctx.shadowBlur = 15
-        ctx.shadowColor = "#a855f7" // Resplandor inestable
-      } else if (isPoison) {
-        ctx.shadowBlur = 8
-        ctx.shadowColor = "#34d399"
+        if (isHeavy) {
+          ctx.shadowBlur = 15
+          ctx.shadowColor = "#a855f7" // Resplandor inestable
+        } else if (isPoison) {
+          ctx.shadowBlur = 8
+          ctx.shadowColor = "#34d399"
+        }
       }
 
       ctx.fill()
@@ -1946,8 +1955,10 @@ export function DungeonScene() {
             ctx.restore()
           } else {
             ctx.save()
-            ctx.shadowBlur = 8
-            ctx.shadowColor = "#eab308"
+            if (!isMobileRef.current) {
+              ctx.shadowBlur = 8
+              ctx.shadowColor = "#eab308"
+            }
             ctx.fillStyle = "#eab308"
             ctx.beginPath()
             ctx.arc(p.x, p.y, 6, 0, Math.PI * 2)
@@ -2117,7 +2128,7 @@ export function DungeonScene() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const canvasRef = useCanvasLoop({ width: WORLD_SIZE.width, height: WORLD_SIZE.height, draw: drawDungeon })
+  const canvasRef = useCanvasLoop({ width: WORLD_SIZE.width, height: WORLD_SIZE.height, draw: drawDungeon, isMobile })
 
   return (
     <div
