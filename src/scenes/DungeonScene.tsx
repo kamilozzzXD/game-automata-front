@@ -14,7 +14,6 @@ import bossSpritesheetUrl from "../assets/boss-character-spritesheet.png"
 import fireballUrl from "../assets/fireball.png"
 import { Portal } from "../components/game/Portal"
 import { DungeonRoom } from "../components/game/DungeonRoom"
-import { IngredientItem } from "../components/game/IngredientItem"
 import { BossHealthBar } from "../components/ui/BossHealthBar"
 import { MiniBossHealthBar } from "../components/ui/MiniBossHealthBar"
 import { PlayerHealthBar } from "../components/ui/PlayerHealthBar"
@@ -444,6 +443,8 @@ export function DungeonScene() {
   }, [dungeon])
 
   const [salaActualId, setSalaActualId] = useState<number | null>(null)
+  const salaActualIdRef = useRef<number | null>(null)
+  salaActualIdRef.current = salaActualId
   // Cache persistente de la disposicion de puertas por sala.
   const [roomConfigs, setRoomConfigs] = useState<Map<number, RoomConfig>>(
     new Map(),
@@ -453,6 +454,12 @@ export function DungeonScene() {
   const [keySpawned, setKeySpawned] = useState(false)
   const [keyCollected, setKeyCollected] = useState(false)
   const [keyPosition, setKeyPosition] = useState<Vector2D>({ x: 0, y: 0 })
+  const keySpawnedRef = useRef(keySpawned)
+  keySpawnedRef.current = keySpawned
+  const keyCollectedRef = useRef(keyCollected)
+  keyCollectedRef.current = keyCollected
+  const keyPositionRef = useRef(keyPosition)
+  keyPositionRef.current = keyPosition
 
   // Control de teletransporte para el Fantasma
   const lastGhostTeleportRef = useRef<number>(0)
@@ -747,6 +754,8 @@ export function DungeonScene() {
 
   // ---------- Salida unificada (portal en la sala inicial) ----------
   const isInInicio = currentNode?.tipo === "inicio"
+  const isInInicioRef = useRef(isInInicio)
+  isInInicioRef.current = isInInicio
   const isPlayerNearExitPortal = useMemo(() => {
     if (!isInInicio) return false
     return isWithinRadius(
@@ -1548,9 +1557,11 @@ export function DungeonScene() {
     loadImage(bossSpritesheetUrl).then((img) => { bossSpriteRef.current = img })
   }, [])
 
-  // Dibujo del lienzo base + jugador (sprite clipping LPC).
+  // Dibujo del lienzo base + Y-Sorting en Canvas.
   const drawDungeon = useCallback((ctx: CanvasRenderingContext2D, w: number, h: number) => {
-    // Fondo plano de mazmorra (piedra oscura)
+    const state = useGameStore.getState()
+
+    // --- Paso 1: Fondo plano y cuadrícula ---
     const bg = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w * 0.75)
     bg.addColorStop(0, "#1e293b")
     bg.addColorStop(0.6, "#0f172a")
@@ -1558,7 +1569,6 @@ export function DungeonScene() {
     ctx.fillStyle = bg
     ctx.fillRect(0, 0, w, h)
 
-    // Rejilla técnica de 40px
     ctx.strokeStyle = "rgba(255, 255, 255, 0.04)"
     ctx.lineWidth = 0.5
     for (let x = 0; x <= w; x += GRID_SIZE) {
@@ -1568,19 +1578,157 @@ export function DungeonScene() {
       ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke()
     }
 
-    // Vignette spotlight de antorcha (solo fuera de la sala del jefe)
-    const state = useGameStore.getState()
-    if (!bossRoomRef.current) {
-      const cx = state.playerPosition.x + PLAYER_SIZE.width / 2
-      const cy = state.playerPosition.y + PLAYER_SIZE.height / 2
-      const vign = ctx.createRadialGradient(cx, cy, 28, cx, cy, 140)
-      vign.addColorStop(0, "rgba(3,7,18,0)")
-      vign.addColorStop(1, "rgba(3,7,18,0.98)")
-      ctx.fillStyle = vign
-      ctx.fillRect(0, 0, w, h)
+    // --- Paso 2: Suelo (Lava, picos, ingredientes y sombras) ---
+    const dungeon = state.currentDungeon
+    const currentNode = dungeon?.estructura_ast.find((n: any) => n.id === salaActualIdRef.current)
+    const hazards = currentNode ? generateHazards(currentNode) : []
+
+    // 1) Trampas de lava orgánicas y fosas de picos top-down
+    for (const h of hazards) {
+      const isLava = h.type === "lava"
+      ctx.save()
+      if (isLava) {
+        const cx = h.position.x + h.size.width / 2
+        const cy = h.position.y + h.size.height / 2
+        const rx = h.size.width / 2
+        const ry = h.size.height / 2
+        
+        ctx.beginPath()
+        ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2)
+        ctx.ellipse(cx - rx * 0.15, cy + ry * 0.05, rx * 0.6, ry * 0.58, 0, 0, Math.PI * 2)
+        ctx.ellipse(cx + rx * 0.15, cy - ry * 0.05, rx * 0.6, ry * 0.58, 0, 0, Math.PI * 2)
+        
+        const grad = ctx.createRadialGradient(cx, cy, rx * 0.1, cx, cy, rx)
+        grad.addColorStop(0, "#f97316")
+        grad.addColorStop(0.5, "#ea580c")
+        grad.addColorStop(1, "#7c2d12")
+        ctx.fillStyle = grad
+        ctx.fill()
+        
+        ctx.strokeStyle = "rgba(124, 45, 18, 0.8)"
+        ctx.lineWidth = 3
+        ctx.stroke()
+
+        // Burbujas
+        const time = performance.now()
+        ctx.fillStyle = "rgba(250, 204, 21, 0.75)"
+        for (let i = 0; i < 3; i++) {
+          const bx = cx - rx * 0.3 + ((i * 30 + time / 25) % (rx * 0.6))
+          const by = cy + Math.sin(time / 150 + i) * (ry * 0.2)
+          ctx.beginPath()
+          ctx.arc(bx, by, 2.5, 0, Math.PI * 2)
+          ctx.fill()
+        }
+      } else {
+        ctx.fillStyle = "#0f172a"
+        ctx.strokeStyle = "#334155"
+        ctx.lineWidth = 3
+        ctx.beginPath()
+        ctx.roundRect ? ctx.roundRect(h.position.x, h.position.y, h.size.width, h.size.height, 8) : ctx.rect(h.position.x, h.position.y, h.size.width, h.size.height)
+        ctx.fill()
+        ctx.stroke()
+
+        const cols = 3
+        const rows = 3
+        const cellW = h.size.width / cols
+        const cellH = h.size.height / rows
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const px = h.position.x + c * cellW + cellW / 2
+            const py = h.position.y + r * cellH + cellH / 2
+            
+            ctx.fillStyle = "#94a3b8"
+            ctx.beginPath()
+            ctx.moveTo(px, py - cellH * 0.3)
+            ctx.lineTo(px, py + cellH * 0.3)
+            ctx.lineTo(px - cellW * 0.3, py)
+            ctx.closePath()
+            ctx.fill()
+
+            ctx.fillStyle = "#475569"
+            ctx.beginPath()
+            ctx.moveTo(px, py - cellH * 0.3)
+            ctx.lineTo(px, py + cellH * 0.3)
+            ctx.lineTo(px + cellW * 0.3, py)
+            ctx.closePath()
+            ctx.fill()
+
+            ctx.fillStyle = "#f8fafc"
+            ctx.beginPath()
+            ctx.arc(px, py, 1.5, 0, Math.PI * 2)
+            ctx.fill()
+          }
+        }
+      }
+      ctx.restore()
     }
 
-    // --- Proyectiles del Jefe (Batch Drawing & Physics, Tarea 5) ---
+    // 2) Ingredientes recolectables
+    if (currentNode?.ingredientes && currentNode.ingredientes.length > 0) {
+      const emojis: Record<string, string> = { A: "💧", B: "🌿", C: "🍄", D: "🔥", E: "🔮" }
+      currentNode.ingredientes.forEach((ing, idx) => {
+        if (!ing) return
+        const seedX = currentNode.id * 100 + idx
+        const seedY = currentNode.id * 100 + idx + 50
+        const x = 150 + pseudoRandom(seedX) * (WORLD_SIZE.width - 300)
+        const y = 150 + pseudoRandom(seedY) * (WORLD_SIZE.height - 300)
+
+        ctx.save()
+        ctx.fillStyle = "rgba(255, 255, 255, 0.15)"
+        ctx.filter = "blur(6px)"
+        ctx.beginPath()
+        ctx.arc(x + INGREDIENT_SIZE.width / 2, y + INGREDIENT_SIZE.height / 2, 16, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.restore()
+
+        ctx.save()
+        ctx.font = "24px sans-serif"
+        ctx.textAlign = "center"
+        ctx.textBaseline = "middle"
+        const bounce = Math.sin(performance.now() / 200 + idx) * 3
+        ctx.fillText(emojis[ing] || "🎒", x + INGREDIENT_SIZE.width / 2, y + INGREDIENT_SIZE.height / 2 + bounce)
+        ctx.restore()
+      })
+    }
+
+    // 3) Sombras de personajes en el piso
+    ctx.save()
+    ctx.fillStyle = "rgba(2, 6, 23, 0.35)"
+    ctx.beginPath()
+    ctx.ellipse(
+      state.playerPosition.x + PLAYER_SIZE.width / 2,
+      state.playerPosition.y + PLAYER_SIZE.height - 2,
+      14,
+      5,
+      0,
+      0,
+      Math.PI * 2
+    )
+    ctx.fill()
+
+    if (bossRoomRef.current && state.bossLives > 0) {
+      ctx.beginPath()
+      ctx.ellipse(
+        state.bossPosition.x + BOSS_SIZE.width / 2,
+        state.bossPosition.y + BOSS_SIZE.height - 4,
+        24,
+        8,
+        0,
+        0,
+        Math.PI * 2
+      )
+      ctx.fill()
+    }
+    ctx.restore()
+
+    // --- Paso 3: Y-Sorting dinámico (Entidades con altura y proyectiles) ---
+    type Renderable = {
+      yBase: number
+      draw: () => void
+    }
+    const renderables: Renderable[] = []
+
+    // A. Proyectiles del Jefe (Física y dibujado)
     const bossProjs = bossProyectilesRef.current
     for (let i = bossProjs.length - 1; i >= 0; i--) {
       const p = bossProjs[i]
@@ -1589,10 +1737,8 @@ export function DungeonScene() {
       p.y += p.dy * speed
       p.distanciaRecorrida += speed
 
-      // Lógica de Fragmentación (Bullet-Hell)
       if (p.distanciaRecorrida > (p.variant === "boss-heavy" ? BOSS_HEAVY_PROJECTILE_MAX_DISTANCE : BOSS_BASIC_PROJECTILE_MAX_DISTANCE) || p.x < -40 || p.x > w + 40 || p.y < -40 || p.y > h + 40) {
         if (p.variant === "boss-heavy") {
-          // Inyección inmediata de las 8 esquirlas en el array
           ESQUIRLAS_8_DIR.forEach(dir => {
             bossProjs.push({
               id: performance.now() + Math.random(),
@@ -1607,40 +1753,24 @@ export function DungeonScene() {
         continue
       }
 
-      // Colisión AABB con el jugador
       const pSize = p.variant === "boss-heavy" ? BOSS_HEAVY_PROJECTILE_SIZE : BOSS_BASIC_PROJECTILE_SIZE
       const projPos: Vector2D = { x: p.x - pSize.width / 2, y: p.y - pSize.height / 2 }
-      const playerPos = state.playerPosition
-
-      if (intersectsAABB(projPos, pSize, playerPos, PLAYER_SIZE)) {
+      if (intersectsAABB(projPos, pSize, state.playerPosition, PLAYER_SIZE)) {
         const isShielded = state.isShieldActive
         if (!isShielded) {
-          const damage = p.variant === "boss-heavy"
-            ? BOSS_HEAVY_PROJECTILE_DAMAGE
-            : p.variant === "boss-poison"
-              ? 15
-              : BOSS_BASIC_PROJECTILE_DAMAGE
+          const damage = p.variant === "boss-heavy" ? BOSS_HEAVY_PROJECTILE_DAMAGE : p.variant === "boss-poison" ? 15 : BOSS_BASIC_PROJECTILE_DAMAGE
           const currentPlayerHp = state.playerHp
-
           if (currentPlayerHp > 0) {
-            void combatHit({
-              hp_actual: currentPlayerHp,
-              dano_recibido: damage,
-            }).then((res) => {
+            void combatHit({ hp_actual: currentPlayerHp, dano_recibido: damage }).then((res) => {
               useGameStore.getState().setPlayerHp(res.hp_resultante)
               useGameStore.getState().setPlayerHealthFlash(true)
               if (p.variant === "boss-poison") {
-                pushNotification({
-                  kind: "error",
-                  message: "¡La pócima de veneno de la Bruja te impacta! -15 HP (Sustracción propia de Turing)",
-                })
+                pushNotification({ kind: "error", message: "¡La pócima de veneno te impacta! -15 HP" })
               }
               if (res.hp_resultante === 0) {
                 useGameStore.getState().resetBoss()
                 bossProyectilesRef.current = []
               }
-            }).catch((err) => {
-              console.error("[v0] Error en combatHit (jugador):", err)
             })
           }
         }
@@ -1804,29 +1934,93 @@ export function DungeonScene() {
         }
       }
 
-      // Dibujo con rotación dinámica y textura precargada (glow en GPU opcional/incorporado en asset)
-      if (fireballSpriteRef.current) {
-        ctx.save()
-        ctx.translate(p.x, p.y)
-        const angle = Math.atan2(p.dy, p.dx)
-        ctx.rotate(angle)
-        // Dibujado centrado en la coordenada con escala de 32x32px
-        ctx.drawImage(fireballSpriteRef.current, -16, -16, 32, 32)
-        ctx.restore()
-      } else {
-        // Fallback primitivo mientras carga el asset
-        ctx.save()
-        ctx.shadowBlur = 8
-        ctx.shadowColor = "#eab308"
-        ctx.fillStyle = "#eab308"
-        ctx.beginPath()
-        ctx.arc(p.x, p.y, 6, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.restore()
-      }
+      renderables.push({
+        yBase: p.y,
+        draw: () => {
+          if (fireballSpriteRef.current) {
+            ctx.save()
+            ctx.translate(p.x, p.y)
+            const angle = Math.atan2(p.dy, p.dx)
+            ctx.rotate(angle)
+            ctx.drawImage(fireballSpriteRef.current, -16, -16, 32, 32)
+            ctx.restore()
+          } else {
+            ctx.save()
+            ctx.shadowBlur = 8
+            ctx.shadowColor = "#eab308"
+            ctx.fillStyle = "#eab308"
+            ctx.beginPath()
+            ctx.arc(p.x, p.y, 6, 0, Math.PI * 2)
+            ctx.fill()
+            ctx.restore()
+          }
+        }
+      })
     }
 
-    // --- Jefe (sprite clipping LPC y badge analítico, Tarea 3) ---
+    // C. Portal de salida (si estamos en la sala inicial)
+    if (isInInicioRef.current) {
+      const isPlayerNearExitPortal = isWithinRadius(
+        state.playerPosition,
+        PLAYER_SIZE,
+        EXIT_PORTAL.position,
+        EXIT_PORTAL.size,
+        EXIT_PORTAL.interactionRadius
+      )
+      renderables.push({
+        yBase: EXIT_PORTAL.position.y + EXIT_PORTAL.size.height,
+        draw: () => {
+          ctx.save()
+          const px = EXIT_PORTAL.position.x
+          const py = EXIT_PORTAL.position.y
+          const pw = EXIT_PORTAL.size.width
+          const ph = EXIT_PORTAL.size.height
+          const cx = px + pw / 2
+          const cy = py + ph / 2
+
+          // Vórtice espiral animado
+          const time = performance.now()
+          const rotation = time / 1000
+          ctx.translate(cx, cy)
+          ctx.rotate(rotation)
+
+          const radius = isPlayerNearExitPortal ? pw * 0.5 : pw * 0.42
+          const gradVortex = ctx.createRadialGradient(0, 0, 0, 0, 0, radius)
+          gradVortex.addColorStop(0, "#ffffff")
+          gradVortex.addColorStop(0.3, "#a855f7")
+          gradVortex.addColorStop(0.8, "#6366f1")
+          gradVortex.addColorStop(1, "rgba(15, 23, 42, 0)")
+
+          ctx.fillStyle = gradVortex
+          ctx.beginPath()
+          ctx.arc(0, 0, radius, 0, Math.PI * 2)
+          ctx.fill()
+          ctx.restore()
+        }
+      })
+    }
+
+    // D. Pedestal / Llave Dorada
+    if (keySpawnedRef.current && !keyCollectedRef.current) {
+      renderables.push({
+        yBase: keyPositionRef.current.y + BOSS_SIZE.height,
+        draw: () => {
+          ctx.save()
+          const kx = keyPositionRef.current.x
+          const ky = keyPositionRef.current.y
+          // Pedestal de luz vertical
+          ctx.beginPath()
+          const gradPed = ctx.createLinearGradient(kx + 40, ky + 80, kx + 40, ky)
+          gradPed.addColorStop(0, "rgba(250, 204, 21, 0.4)")
+          gradPed.addColorStop(1, "rgba(250, 204, 21, 0)")
+          ctx.fillStyle = gradPed
+          ctx.fillRect(kx + 8, ky - 40, 64, 120)
+          ctx.restore()
+        }
+      })
+    }
+
+    // E. Jefe Principal
     if (bossRoomRef.current && state.bossLives > 0) {
       const bossPos = state.bossPosition
       const isAttacking = state.bossState === "C"
@@ -1834,7 +2028,6 @@ export function DungeonScene() {
       const animSpeed = isAttacking ? 80 : (state.bossState === "B" ? 90 : 180)
       const frameIndex = Math.floor(performance.now() / animSpeed) % bossFrames
 
-      // Determinar fila LPC: 8=Arriba, 9=Izquierda, 10=Abajo, 11=Derecha (o 2=Ataque)
       let bossRow = 10
       if (isAttacking) {
         bossRow = 2
@@ -1847,59 +2040,78 @@ export function DungeonScene() {
         }
       }
 
-      // Dibujo del Jefe (Con Fallback)
-      if (bossSpriteRef.current) {
-        const BOSS_SPRITE_SIZE = 64
-        // Centrado: Ajustar offsets para que el sprite de 64x64 calce centrado en la colisión física de 80x80 (offset +8)
-        const offsetX = bossPos.x + 8
-        const offsetY = bossPos.y + 8
+      renderables.push({
+        yBase: bossPos.y + BOSS_SIZE.height,
+        draw: () => {
+          if (bossSpriteRef.current) {
+            const BOSS_SPRITE_SIZE = 64
+            const offsetX = bossPos.x + 8
+            const offsetY = bossPos.y + 8
+            ctx.drawImage(
+              bossSpriteRef.current,
+              frameIndex * BOSS_SPRITE_SIZE, bossRow * BOSS_SPRITE_SIZE, BOSS_SPRITE_SIZE, BOSS_SPRITE_SIZE,
+              offsetX, offsetY, BOSS_SPRITE_SIZE, BOSS_SPRITE_SIZE
+            )
+          } else {
+            ctx.fillStyle = "#ef4444"
+            ctx.beginPath()
+            ctx.arc(bossPos.x + 40, bossPos.y + 40, 40, 0, Math.PI * 2)
+            ctx.fill()
+          }
 
-        ctx.drawImage(
-          bossSpriteRef.current,
-          frameIndex * BOSS_SPRITE_SIZE, bossRow * BOSS_SPRITE_SIZE, BOSS_SPRITE_SIZE, BOSS_SPRITE_SIZE,
-          offsetX, offsetY, BOSS_SPRITE_SIZE, BOSS_SPRITE_SIZE
-        )
-      } else {
-        // Fallback de seguridad
-        ctx.fillStyle = "#ef4444" // Rojo destructivo
-        ctx.beginPath()
-        ctx.arc(bossPos.x + 40, bossPos.y + 40, 40, 0, Math.PI * 2)
-        ctx.fill()
+          // Badge analítico de Moore
+          ctx.save()
+          ctx.fillStyle = state.isBossFurious ? "#d946ef" : "#ffffff"
+          ctx.font = "bold 13px 'Courier New', monospace"
+          ctx.textAlign = "center"
+          ctx.fillText(
+            `Moore State: [${state.currentBossState}]`, 
+            bossPos.x + 40, 
+            bossPos.y - 12
+          )
+          ctx.restore()
+        }
+      })
+    }
+
+    // F. Jugador
+    renderables.push({
+      yBase: state.playerPosition.y + PLAYER_SIZE.height,
+      draw: () => {
+        let row = 10
+        if (Math.abs(state.lastDirection.x) > Math.abs(state.lastDirection.y)) {
+          row = state.lastDirection.x > 0 ? 11 : 9
+        } else {
+          row = state.lastDirection.y < 0 ? 8 : 10
+        }
+        const frameIndex = state.isPlayerMoving ? Math.floor(performance.now() / 80) % 9 : 0
+
+        if (playerSpriteRef.current) {
+          ctx.save()
+          ctx.globalAlpha = state.isPlayerInvisible ? 0.4 : 1
+          ctx.drawImage(
+            playerSpriteRef.current,
+            frameIndex * SPRITE_SIZE, row * SPRITE_SIZE, SPRITE_SIZE, SPRITE_SIZE,
+            state.playerPosition.x - 8, state.playerPosition.y - 12, SPRITE_SIZE, SPRITE_SIZE,
+          )
+          ctx.restore()
+        }
       }
+    })
 
-      // Renderizado del Badge Analítico de Moore
-      ctx.save()
-      ctx.fillStyle = state.isBossFurious ? "#d946ef" : "#ffffff"
-      ctx.font = "bold 13px 'Courier New', monospace"
-      ctx.textAlign = "center"
-      ctx.fillText(
-        `Moore State: [${state.currentBossState}]`, 
-        bossPos.x + 40, 
-        bossPos.y - 12
-      )
-      ctx.restore()
-    }
+    // Ordenar y ejecutar dibujado secuencial
+    renderables.sort((a, b) => a.yBase - b.yBase)
+    renderables.forEach((r) => r.draw())
 
-    // --- Jugador (sprite clipping LPC) ---
-    // Fila LPC: 8=Arriba, 9=Izquierda, 10=Abajo, 11=Derecha
-    let row = 10
-    if (Math.abs(state.lastDirection.x) > Math.abs(state.lastDirection.y)) {
-      row = state.lastDirection.x > 0 ? 11 : 9
-    } else {
-      row = state.lastDirection.y < 0 ? 8 : 10
-    }
-    // Animación gated por tiempo físico (sin setInterval ni estado React)
-    const frameIndex = state.isPlayerMoving ? Math.floor(performance.now() / 80) % 9 : 0
-
-    if (playerSpriteRef.current) {
-      // Opacidad reducida si el jugador es invisible
-      ctx.globalAlpha = state.isPlayerInvisible ? 0.4 : 1
-      ctx.drawImage(
-        playerSpriteRef.current,
-        frameIndex * SPRITE_SIZE, row * SPRITE_SIZE, SPRITE_SIZE, SPRITE_SIZE,
-        state.playerPosition.x - 8, state.playerPosition.y - 12, SPRITE_SIZE, SPRITE_SIZE,
-      )
-      ctx.globalAlpha = 1
+    // --- Paso 4: Overlay (Viñeta de oscuridad de antorcha) ---
+    if (!bossRoomRef.current) {
+      const cx = state.playerPosition.x + PLAYER_SIZE.width / 2
+      const cy = state.playerPosition.y + PLAYER_SIZE.height / 2
+      const vign = ctx.createRadialGradient(cx, cy, 28, cx, cy, 140)
+      vign.addColorStop(0, "rgba(3,7,18,0)")
+      vign.addColorStop(1, "rgba(3,7,18,0.98)")
+      ctx.fillStyle = vign
+      ctx.fillRect(0, 0, w, h)
     }
   // playerSpriteRef es un ref estable; no va en deps
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1930,6 +2142,7 @@ export function DungeonScene() {
             isPlayerNear={isPlayerNearExitPortal}
             label="Salir de la Mazmorra"
             actionLabel="para volver al bosque"
+            onlyOverlay={true}
           />
         )}
 
@@ -1971,24 +2184,7 @@ export function DungeonScene() {
 
         {/* Proyectiles del jugador: dibujados en canvas (ver drawDungeon) */}
 
-        {/* Ingredientes esparcidos por la sala (si los hay) */}
-        {currentNode?.ingredientes && currentNode.ingredientes.map((ing, idx) => {
-          if (!ing) return null
 
-          const seedX = currentNode.id * 100 + idx
-          const seedY = currentNode.id * 100 + idx + 50
-          const x = 150 + pseudoRandom(seedX) * (WORLD_SIZE.width - 300)
-          const y = 150 + pseudoRandom(seedY) * (WORLD_SIZE.height - 300)
-
-          return (
-            <IngredientItem
-              key={`${currentNode.id}-${idx}`}
-              ingredient={ing}
-              position={{ x, y }}
-              size={INGREDIENT_SIZE}
-            />
-          )
-        })}
 
         {/* Cofre Secreto (Aparece tras derrotar al mini-jefe) */}
         {currentNode?.tipo === "sala" && currentNode.enemigo_derrotado && !currentNode.pociones_reclamadas && (
@@ -2041,14 +2237,7 @@ export function DungeonScene() {
           </div>
         )}
 
-        {/* Peligros en el suelo (z-index: 5) */}
-        {currentNode && generateHazards(currentNode).map((h) => (
-          <HazardTile
-            key={h.id}
-            hazard={h}
-            playerPos={playerPosition}
-          />
-        ))}
+
 
         {/* El jugador se dibuja directamente en el canvas (ver drawDungeon) */}
 
@@ -2231,111 +2420,3 @@ function DoorTile({
   )
 }
 
-function HazardTile({
-  hazard,
-  playerPos,
-}: {
-  hazard: Hazard
-  playerPos: Vector2D
-}) {
-  const isLava = hazard.type === "lava"
-  const c1 = center(playerPos, PLAYER_SIZE)
-  const c2 = center(hazard.position, hazard.size)
-  const dx = c1.x - c2.x
-  const dy = c1.y - c2.y
-  // La antorcha ilumina 140px, dejamos 160px para el efecto de borde luminoso (160^2 = 25600)
-  const inLight = (dx * dx + dy * dy) <= 25600
-
-  // Generar un borde de charco orgánico determinista para cada lava basado en su ID/posición
-  const puddleBorderRadius = isLava
-    ? `${35 + (hazard.position.x % 15)}% ${55 + (hazard.position.y % 15)}% ${40 + (hazard.position.x % 20)}% ${50 + (hazard.position.y % 20)}% / ${45 + (hazard.position.y % 15)}% ${45 + (hazard.position.x % 15)}% ${55 + (hazard.position.y % 20)}% ${50 + (hazard.position.x % 20)}%`
-    : "12px" // 12px equivale a rounded-xl
-
-  return (
-    <div
-      className={`absolute overflow-hidden flex items-center justify-center border ${isLava
-        ? "border-orange-500/80 shadow-[inset_0_0_10px_rgba(124,45,18,0.7)]"
-        : "border-slate-800/80"
-        }`}
-      style={{
-        left: hazard.position.x,
-        top: hazard.position.y,
-        width: hazard.size.width,
-        height: hazard.size.height,
-        borderRadius: puddleBorderRadius,
-        background: isLava
-          ? "radial-gradient(circle, #f97316 20%, #ea580c 60%, #7c2d12 100%)"
-          : "none",
-        boxShadow: isLava && inLight ? "0 0 18px rgba(234, 88, 12, 0.75)" : "none",
-        zIndex: 5, // Debajo de la capa de oscuridad (z-12)
-      }}
-    >
-      {isLava ? (
-        <div className="relative w-full h-full">
-          <div className="absolute inset-0 bg-orange-500/20 mix-blend-overlay animate-pulse" />
-          {/* Boiling bubbles */}
-          <div className="w-2.5 h-2.5 rounded-full bg-yellow-400 absolute opacity-70 animate-bubble" style={{ left: "12px", bottom: "8px", animationDelay: "0.2s" }} />
-          <div className="w-2 h-2 rounded-full bg-orange-400 absolute opacity-80 animate-bubble" style={{ left: "34px", bottom: "14px", animationDelay: "0.8s" }} />
-          <div className="w-1.5 h-1.5 rounded-full bg-yellow-300 absolute opacity-90 animate-bubble" style={{ left: "22px", bottom: "28px", animationDelay: "1.4s" }} />
-          <div className="w-2.5 h-2.5 rounded-full bg-yellow-400 absolute opacity-70 animate-bubble" style={{ left: "44px", bottom: "6px", animationDelay: "2.0s" }} />
-        </div>
-      ) : (
-        /* High Definition 3D Vector Spikes SVG on Cracked Dark Stone */
-        <svg viewBox="0 0 64 64" className="w-full h-full select-none pointer-events-none">
-          <defs>
-            <radialGradient id="cracked-stone" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="#475569" />
-              <stop offset="60%" stopColor="#1e293b" />
-              <stop offset="100%" stopColor="#0f172a" />
-            </radialGradient>
-            <linearGradient id="metal-light" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#f1f5f9" />
-              <stop offset="50%" stopColor="#cbd5e1" />
-              <stop offset="100%" stopColor="#64748b" />
-            </linearGradient>
-            <linearGradient id="metal-dark" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#475569" />
-              <stop offset="70%" stopColor="#334155" />
-              <stop offset="100%" stopColor="#0f172a" />
-            </linearGradient>
-          </defs>
-
-          {/* Cracked stone backdrop */}
-          <rect width="64" height="64" fill="url(#cracked-stone)" />
-
-          {/* Subtle rock cracks */}
-          <path d="M 0 10 L 20 25 L 35 15 L 64 45 M 10 64 L 25 45 L 20 25 M 64 12 L 44 20 L 48 44 L 25 45" stroke="#020617" strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.65" />
-          <path d="M 0 10 L 20 25 L 35 15 L 64 45 M 10 64 L 25 45 L 20 25 M 64 12 L 44 20 L 48 44 L 25 45" stroke="#475569" strokeWidth="0.5" strokeLinecap="round" fill="none" opacity="0.35" />
-
-          {/* 3D Spikes (Spike 1: center 20, 24) */}
-          <g>
-            <ellipse cx="20" cy="36" rx="9" ry="3" fill="#020617" opacity="0.6" />
-            <polygon points="11,35 20,12 20,35" fill="url(#metal-light)" />
-            <polygon points="20,35 20,12 29,35" fill="url(#metal-dark)" />
-          </g>
-
-          {/* Spike 2: center 44, 20 */}
-          <g>
-            <ellipse cx="44" cy="34" rx="10" ry="3" fill="#020617" opacity="0.6" />
-            <polygon points="34,33 44,7 44,33" fill="url(#metal-light)" />
-            <polygon points="44,33 44,7 54,33" fill="url(#metal-dark)" />
-          </g>
-
-          {/* Spike 3: center 16, 48 */}
-          <g>
-            <ellipse cx="16" cy="58" rx="11" ry="3.5" fill="#020617" opacity="0.6" />
-            <polygon points="5,57 16,30 16,57" fill="url(#metal-light)" />
-            <polygon points="16,57 16,30 27,57" fill="url(#metal-dark)" />
-          </g>
-
-          {/* Spike 4: center 48, 44 */}
-          <g>
-            <ellipse cx="48" cy="54" rx="8" ry="2.5" fill="#020617" opacity="0.6" />
-            <polygon points="40,53 48,31 48,53" fill="url(#metal-light)" />
-            <polygon points="48,53 48,31 56,53" fill="url(#metal-dark)" />
-          </g>
-        </svg>
-      )}
-    </div>
-  )
-}

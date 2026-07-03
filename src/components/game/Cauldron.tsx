@@ -5,13 +5,35 @@ type Props = {
   position: Vector2D
   size: Size
   isPlayerNear: boolean
+  onlyOverlay?: boolean
 }
 
 /**
  * Caldero como objeto interactuable en la escena.
  * Cuando el jugador esta dentro del radio, brilla y muestra un prompt "[E]".
  */
-export function Cauldron({ position, size, isPlayerNear }: Props) {
+export function Cauldron({ position, size, isPlayerNear, onlyOverlay = false }: Props) {
+  if (onlyOverlay) {
+    return (
+      <div
+        className="absolute z-10 flex flex-col items-center pointer-events-none"
+        style={{
+          left: position.x,
+          top: position.y,
+          width: size.width,
+          height: size.height,
+        }}
+      >
+        {/* Prompt de interaccion */}
+        {isPlayerNear && (
+          <div className="absolute -top-10 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-primary/60 bg-background/90 px-3 py-1 text-xs font-semibold text-primary shadow-md pointer-events-auto">
+            Pulsa <kbd className="rounded bg-primary px-1.5 text-background">E</kbd> para usar
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div
       className="absolute z-10 flex flex-col items-center"

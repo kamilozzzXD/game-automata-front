@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { GiPineTree } from "react-icons/gi"
 import { Cauldron } from "../components/game/Cauldron"
 import { loadImage } from "../utils/assetLoader"
 import spritesheetUrl from "../assets/character-spritesheet.png"
@@ -191,9 +190,102 @@ export function ForestScene() {
     }
   }, [])
 
-  // Dibujo del lienzo base + jugador (sprite clipping LPC).
+  // Dibujo de un pino en el lienzo para Y-Sorting.
+  const drawPineTree = (ctx: CanvasRenderingContext2D, x: number, y: number, size: number) => {
+    ctx.save()
+    // Tronco del árbol
+    ctx.fillStyle = "#451a03"
+    ctx.fillRect(x + size / 2 - 3, y + size - 16, 6, 16)
+
+    // Hojas del pino (3 capas triangulares)
+    ctx.fillStyle = "#022c22"
+    ctx.strokeStyle = "#064e3b"
+    ctx.lineWidth = 1.5
+
+    const layersCount = 3
+    const layerHeight = (size - 12) / layersCount
+    for (let l = 0; l < layersCount; l++) {
+      const ly = y + size - 12 - (l * layerHeight * 0.7)
+      const lw = size * (1 - l * 0.25)
+      ctx.beginPath()
+      ctx.moveTo(x + size / 2 - lw / 2, ly)
+      ctx.lineTo(x + size / 2, ly - layerHeight)
+      ctx.lineTo(x + size / 2 + lw / 2, ly)
+      ctx.closePath()
+      ctx.fill()
+      ctx.stroke()
+    }
+    ctx.restore()
+  }
+
+  // Dibujo del caldero en el lienzo para Y-Sorting.
+  const drawCauldron = (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, isPlayerNear: boolean) => {
+    ctx.save()
+    // Olla del caldero
+    ctx.fillStyle = "#1e293b"
+    ctx.strokeStyle = isPlayerNear ? "rgba(16, 185, 129, 0.8)" : "#0f172a"
+    ctx.lineWidth = 2.5
+    ctx.beginPath()
+    ctx.arc(x + w / 2, y + h / 2 + 6, w * 0.38, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.stroke()
+
+    // Borde superior
+    ctx.fillStyle = "#334155"
+    ctx.beginPath()
+    ctx.ellipse(x + w / 2, y + h / 2 - 12, w * 0.35, h * 0.1, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.stroke()
+
+    // Poción hirviendo verde
+    ctx.fillStyle = "#10b981"
+    ctx.beginPath()
+    ctx.ellipse(x + w / 2, y + h / 2 - 12, w * 0.32, h * 0.08, 0, 0, Math.PI * 2)
+    ctx.fill()
+    
+    // Burbujas animadas
+    const time = performance.now()
+    ctx.fillStyle = "#a7f3d0"
+    for (let i = 0; i < 3; i++) {
+      const bx = x + w / 2 - 12 + ((i * 14 + time / 20) % 24)
+      const by = y + h / 2 - 12 + Math.sin(time / 150 + i) * 2
+      ctx.beginPath()
+      ctx.arc(bx, by, 1.5, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    ctx.restore()
+  }
+
+  // Dibujo del portal en el lienzo para Y-Sorting.
+  const drawPortal = (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, isPlayerNear: boolean) => {
+    ctx.save()
+    const cx = x + w / 2
+    const cy = y + h / 2
+    
+    // Vórtice espiral animado
+    const time = performance.now()
+    const rotation = time / 1000
+    ctx.translate(cx, cy)
+    ctx.rotate(rotation)
+
+    const radius = isPlayerNear ? w * 0.5 : w * 0.42
+    const gradVortex = ctx.createRadialGradient(0, 0, 0, 0, 0, radius)
+    gradVortex.addColorStop(0, "#ffffff")
+    gradVortex.addColorStop(0.3, "#a855f7")
+    gradVortex.addColorStop(0.8, "#6366f1")
+    gradVortex.addColorStop(1, "rgba(15, 23, 42, 0)")
+
+    ctx.fillStyle = gradVortex
+    ctx.beginPath()
+    ctx.arc(0, 0, radius, 0, Math.PI * 2)
+    ctx.fill()
+
+    ctx.restore()
+  }
+
+  // Dibujo del lienzo base + Y-Sorting en Canvas.
   const drawForest = useCallback((ctx: CanvasRenderingContext2D, w: number, h: number) => {
-    // Fondo tonal verde-bosque
+    // Paso 1: Fondo y rejilla
     const bg = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w * 0.7)
     bg.addColorStop(0, "#047857")
     bg.addColorStop(0.55, "#065f46")
@@ -201,7 +293,7 @@ export function ForestScene() {
     ctx.fillStyle = bg
     ctx.fillRect(0, 0, w, h)
 
-    // Rejilla técnica de 40px (z-0, capa de referencia visual)
+    // Rejilla técnica de 40px
     ctx.strokeStyle = "rgba(0, 0, 0, 0.12)"
     ctx.lineWidth = 0.5
     for (let x = 0; x <= w; x += GRID_SIZE) {
@@ -211,28 +303,123 @@ export function ForestScene() {
       ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke()
     }
 
-    // --- Jugador (sprite clipping LPC) ---
     const state = useGameStore.getState()
-    // Fila LPC: 8=Arriba, 9=Izquierda, 10=Abajo, 11=Derecha
-    let row = 10
-    if (Math.abs(state.lastDirection.x) > Math.abs(state.lastDirection.y)) {
-      row = state.lastDirection.x > 0 ? 11 : 9
-    } else {
-      row = state.lastDirection.y < 0 ? 8 : 10
-    }
-    // Animación gated por tiempo físico (sin setInterval ni estado React)
-    const frameIndex = state.isPlayerMoving ? Math.floor(performance.now() / 80) % 9 : 0
+    const isNearPortal = isWithinRadius(
+      state.playerPosition,
+      PLAYER_SIZE,
+      PORTAL.position,
+      PORTAL.size,
+      PORTAL.interactionRadius
+    )
+    const isNearCauldron = isWithinRadius(
+      state.playerPosition,
+      PLAYER_SIZE,
+      CAULDRON.position,
+      CAULDRON.size,
+      CAULDRON.interactionRadius
+    )
 
-    if (playerSpriteRef.current) {
-      // Opacidad reducida si el jugador es invisible
-      ctx.globalAlpha = state.isPlayerInvisible ? 0.4 : 1
-      ctx.drawImage(
-        playerSpriteRef.current,
-        frameIndex * SPRITE_SIZE, row * SPRITE_SIZE, SPRITE_SIZE, SPRITE_SIZE,
-        state.playerPosition.x - 8, state.playerPosition.y - 12, SPRITE_SIZE, SPRITE_SIZE,
-      )
-      ctx.globalAlpha = 1
+    // Paso 2: Suelo (Camino de tierra y sombras en el piso)
+    // Camino de tierra hacia el caldero
+    ctx.save()
+    ctx.fillStyle = "rgba(252, 211, 77, 0.15)"
+    ctx.filter = "blur(12px)"
+    ctx.beginPath()
+    ctx.ellipse(380 + 380 / 2, 230 + 80 / 2, 380 / 2, 80 / 2, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
+
+    // Sombras de los árboles
+    ctx.save()
+    ctx.fillStyle = "rgba(2, 6, 23, 0.25)"
+    TREES.forEach((t) => {
+      const size = t.size ?? 60
+      ctx.beginPath()
+      ctx.ellipse(t.x + size / 2, t.y + size - 4, size * 0.4, size * 0.1, 0, 0, Math.PI * 2)
+      ctx.fill()
+    })
+
+    // Sombra del caldero
+    ctx.beginPath()
+    ctx.ellipse(
+      CAULDRON.position.x + CAULDRON.size.width / 2,
+      CAULDRON.position.y + CAULDRON.size.height - 6,
+      CAULDRON.size.width * 0.45,
+      CAULDRON.size.height * 0.15,
+      0, 0, Math.PI * 2
+    )
+    ctx.fill()
+
+    // Sombra del jugador
+    ctx.beginPath()
+    ctx.ellipse(
+      state.playerPosition.x + PLAYER_SIZE.width / 2,
+      state.playerPosition.y + PLAYER_SIZE.height - 2,
+      14,
+      5,
+      0,
+      0,
+      Math.PI * 2
+    )
+    ctx.fill()
+    ctx.restore()
+
+    // Paso 3: Y-Sorting dinámico (Árboles, Portal, Caldero y Jugador)
+    type Renderable = {
+      yBase: number
+      draw: () => void
     }
+    const renderables: Renderable[] = []
+
+    // Árboles
+    TREES.forEach((t) => {
+      const size = t.size ?? 60
+      renderables.push({
+        yBase: t.y + size - 4,
+        draw: () => drawPineTree(ctx, t.x, t.y, size)
+      })
+    })
+
+    // Caldero
+    renderables.push({
+      yBase: CAULDRON.position.y + CAULDRON.size.height,
+      draw: () => drawCauldron(ctx, CAULDRON.position.x, CAULDRON.position.y, CAULDRON.size.width, CAULDRON.size.height, isNearCauldron)
+    })
+
+    // Portal
+    renderables.push({
+      yBase: PORTAL.position.y + PORTAL.size.height,
+      draw: () => drawPortal(ctx, PORTAL.position.x, PORTAL.position.y, PORTAL.size.width, PORTAL.size.height, isNearPortal)
+    })
+
+    // Jugador
+    renderables.push({
+      yBase: state.playerPosition.y + PLAYER_SIZE.height,
+      draw: () => {
+        let row = 10
+        if (Math.abs(state.lastDirection.x) > Math.abs(state.lastDirection.y)) {
+          row = state.lastDirection.x > 0 ? 11 : 9
+        } else {
+          row = state.lastDirection.y < 0 ? 8 : 10
+        }
+        const frameIndex = state.isPlayerMoving ? Math.floor(performance.now() / 80) % 9 : 0
+
+        if (playerSpriteRef.current) {
+          ctx.save()
+          ctx.globalAlpha = state.isPlayerInvisible ? 0.4 : 1
+          ctx.drawImage(
+            playerSpriteRef.current,
+            frameIndex * SPRITE_SIZE, row * SPRITE_SIZE, SPRITE_SIZE, SPRITE_SIZE,
+            state.playerPosition.x - 8, state.playerPosition.y - 12, SPRITE_SIZE, SPRITE_SIZE,
+          )
+          ctx.restore()
+        }
+      }
+    })
+
+    // Ordenar y ejecutar dibujado secuencial
+    renderables.sort((a, b) => a.yBase - b.yBase)
+    renderables.forEach((r) => r.draw())
   // playerSpriteRef es un ref estable; no va en deps
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -248,30 +435,13 @@ export function ForestScene() {
         {/* Canvas base: fondo + rejilla 40px en z-0 (capa inferior absoluta) */}
         <canvas ref={canvasRef} className="absolute inset-0" style={{ zIndex: 0 }} aria-hidden />
 
-        {/* Camino de tierra hacia el caldero */}
-        <div
-          className="absolute z-0 rounded-full bg-amber-200/15 blur-md"
-          style={{ left: 380, top: 230, width: 380, height: 80 }}
-          aria-hidden
-        />
-
-        {/* Decoracion: arboles */}
-        {TREES.map((t, i) => (
-          <GiPineTree
-            key={i}
-            className="absolute z-0 text-emerald-950 drop-shadow-md"
-            size={t.size ?? 60}
-            style={{ left: t.x, top: t.y }}
-            aria-hidden
-          />
-        ))}
-
         {/* Portal hacia la mazmorra (lado izquierdo del claro) */}
         <Portal
           position={PORTAL.position}
           size={PORTAL.size}
           isPlayerNear={isPlayerNearPortal}
           isBusy={isGeneratingDungeon}
+          onlyOverlay={true}
         />
 
         {/* Caldero */}
@@ -279,6 +449,7 @@ export function ForestScene() {
           position={CAULDRON.position}
           size={CAULDRON.size}
           isPlayerNear={isPlayerNearCauldron}
+          onlyOverlay={true}
         />
 
 

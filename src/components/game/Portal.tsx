@@ -10,6 +10,7 @@ type Props = {
   label?: string
   // Texto que sigue al "Pulsa E" en el prompt de interaccion (default: "para explorar").
   actionLabel?: string
+  onlyOverlay?: boolean
 }
 
 /**
@@ -24,7 +25,34 @@ export function Portal({
   isBusy = false,
   label = "Bosque Profundo",
   actionLabel = "para explorar",
+  onlyOverlay = false,
 }: Props) {
+  if (onlyOverlay) {
+    return (
+      <div
+        className="absolute z-10 flex flex-col items-center pointer-events-none"
+        style={{
+          left: position.x,
+          top: position.y,
+          width: size.width,
+          height: size.height,
+        }}
+      >
+        {/* Etiqueta visible siempre */}
+        <div className="absolute -bottom-7 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-background/80 px-2 py-0.5 text-[11px] font-semibold text-foreground/90 shadow">
+          {label}
+        </div>
+
+        {/* Prompt de interaccion */}
+        {isPlayerNear && !isBusy && (
+          <div className="absolute -top-10 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-accent/60 bg-background/90 px-3 py-1 text-xs font-semibold text-accent shadow-md pointer-events-auto">
+            Pulsa <kbd className="rounded bg-accent px-1.5 text-background">E</kbd> {actionLabel}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div
       className="absolute z-10 flex flex-col items-center"

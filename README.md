@@ -209,6 +209,47 @@ src/
 - **Eliminación Absoluta de Math.sqrt**: Todos los chequeos de radio (rango de la IA, near miss de proyectiles, iluminación de trampas e interacciones con el caldero/portal) se reemplazaron por comparaciones de distancias al cuadrado (`dx * dx + dy * dy <= r * r`), reduciendo significativamente la carga aritmética en la CPU a 60 FPS.
 - **Joystick Virtual Táctil con Gating**: Los eventos de arrastre en el joystick virtual se leen a alta velocidad en memoria local (`pendingVectorRef`) y se despachan a Zustand estrictamente a una cadencia de 60 FPS dentro de un bucle gestionado por `requestAnimationFrame`, previniendo la degradación y lag en pantallas de 120Hz/240Hz.
 
+---
+
+### Tarea 7.1 — Bugfix: Ordenamiento de Profundidad (Restricción Visual)
+
+**Objetivo:** Corregir el error visual donde el Jugador camina por debajo de los elementos del piso que viven en el DOM, manteniendo los elementos de altura (Árboles, Caldero, Portal) intactos en el DOM.
+
+**Archivos afectados:**
+
+| Archivo | Cambio |
+|---|---|
+| `src/scenes/DungeonScene.tsx` | Eliminados `<HazardTile />` e `<IngredientItem />` del JSX. Implementada la migración de elementos del suelo (trampas de lava, fosas de picos, e ingredientes) al canvas en el Paso 2 antes del dibujado del jugador y jefe. |
+| `src/scenes/ForestScene.tsx` | Eliminado el camino de tierra en div del JSX. Implementada la migración del camino de tierra al canvas en el Paso 2. |
+
+**Decisiones de ingeniería:**
+
+- **Orden Secuencial de Capas**: Se estableció el orden de dibujado en el Canvas: Paso 1 (Fondo y cuadrícula) -> Paso 2 (Trampas, picos, charcos e ingredientes/materiales del suelo) -> Paso 3 (Proyectiles, jugador y jefe).
+- **Conservación de Altura en DOM**: El Portal, el Caldero y los Árboles permanecen en el DOM, logrando una ilusión de profundidad natural sin sobrecargar el canvas ni alterar el diseño original.
+- **Renders del Suelo Procedurales**: Los charcos de lava y picos se dibujan proceduralmente en el canvas, y los ingredientes se representan con emojis flotantes oscilatorios simples a 60 FPS.
+
+---
+
+### Tarea 7.2 — Migración Definitiva a Canvas y Y-Sorting Tridimensional
+
+**Objetivo:** Eliminar las barreras entre el DOM y el motor gráfico moviendo los elementos de altura restantes (Árboles, Caldero, Portal) al Canvas. Implementar un algoritmo de Y-Sorting puro para la superposición de profundidad y rediseñar procedimentalmente los peligros del suelo para que respeten la perspectiva *top-down*.
+
+**Archivos afectados:**
+
+| Archivo | Cambio |
+|---|---|
+| `src/scenes/ForestScene.tsx` | Migración de pinos, portal y caldero al lienzo con funciones procedimentales de dibujado. Remoción del map de árboles del JSX. Limpieza de elementos DOM configurando `<Portal />` y `<Cauldron />` con `onlyOverlay={true}`. Implementación de Paso 3 con array dinámico `renderables` Y-Sorted. |
+| `src/scenes/DungeonScene.tsx` | Migración del portal de salida, llave dorada y pedestal al lienzo. Rediseño visual de picos top-down en 3D (con sombreado de aristas metálicas) y lava orgánica (charcos con curvas de Bézier/elipses y burbujas). Implementación de Paso 3 Y-Sorted (Player, Boss, exit Portal, key y projectiles). |
+| `src/components/game/Cauldron.tsx` | Añadido soporte para el prop `onlyOverlay?: boolean` para saltarse el dibujado de iconos y renderizar puramente los prompts interactivos en HTML. |
+| `src/components/game/Portal.tsx` | Añadido soporte para el prop `onlyOverlay?: boolean` para renderizar puramente las etiquetas textuales del portal. |
+
+**Decisiones de ingeniería:**
+
+- **Organic Lava & Spikes**: La lava ya no se pinta como un círculo perfecto; se compone de superposiciones de elipses simulando un charco orgánico con burbujas de calor dinámicas. Los picos se dibujan desde una perspectiva top-down usando triángulos sombreados metálicos (con arista de luz y sombra) en lugar de púas verticales planas.
+- **Y-Sorting Unificado por Base**: Las entidades con altura (Jugador, Jefe, pinos, portal, caldero, pedestal, y proyectiles) se agrupan en cada frame en una lista dinámica de renderizables y se ordenan por su coordenada de anclaje base (`yBase = y + height`). Esto garantiza que el jugador y el jefe se traslapen correctamente delante o detrás de los árboles u otros elementos según su posición física 2.5D.
+- **HTML Overlays**: Para retener la accesibilidad y el dinamismo de los menús e interacciones de usuario, los prompts textuales de interaccion (`Pulsa [E] para usar`, etc.) continúan en el DOM superpuestos con absoluta precisión y nulo impacto en el renderizado del lienzo principal.
+
+
 
 
 
