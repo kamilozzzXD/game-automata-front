@@ -1942,31 +1942,6 @@ export function DungeonScene() {
           }
         }
       }
-
-      renderables.push({
-        yBase: p.y,
-        draw: () => {
-          if (fireballSpriteRef.current) {
-            ctx.save()
-            ctx.translate(p.x, p.y)
-            const angle = Math.atan2(p.dy, p.dx)
-            ctx.rotate(angle)
-            ctx.drawImage(fireballSpriteRef.current, -16, -16, 32, 32)
-            ctx.restore()
-          } else {
-            ctx.save()
-            if (!isMobileRef.current) {
-              ctx.shadowBlur = 8
-              ctx.shadowColor = "#eab308"
-            }
-            ctx.fillStyle = "#eab308"
-            ctx.beginPath()
-            ctx.arc(p.x, p.y, 6, 0, Math.PI * 2)
-            ctx.fill()
-            ctx.restore()
-          }
-        }
-      })
     }
 
     // C. Portal de salida (si estamos en la sala inicial)
@@ -2123,6 +2098,30 @@ export function DungeonScene() {
       vign.addColorStop(1, "rgba(3,7,18,0.98)")
       ctx.fillStyle = vign
       ctx.fillRect(0, 0, w, h)
+    }
+
+    // --- Paso 5: Dibujar Proyectiles del Jugador por encima de la oscuridad (Tarea 1) ---
+    const activeProjs = proyectilesRef.current
+    for (const p of activeProjs) {
+      if (fireballSpriteRef.current) {
+        ctx.save()
+        ctx.translate(p.x, p.y)
+        const angle = Math.atan2(p.dy, p.dx)
+        ctx.rotate(angle)
+        ctx.drawImage(fireballSpriteRef.current, -16, -16, 32, 32)
+        ctx.restore()
+      } else {
+        ctx.save()
+        if (!isMobileRef.current) {
+          ctx.shadowBlur = 8
+          ctx.shadowColor = "#eab308"
+        }
+        ctx.fillStyle = "#eab308"
+        ctx.beginPath()
+        ctx.arc(p.x, p.y, 6, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.restore()
+      }
     }
   // playerSpriteRef es un ref estable; no va en deps
   // eslint-disable-next-line react-hooks/exhaustive-deps

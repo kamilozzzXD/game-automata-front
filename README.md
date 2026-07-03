@@ -316,6 +316,26 @@ src/
 - **Simplificación de Relleno en Proyectiles**: Reemplazar gradientes radiales continuos por rellenos sólidos (`fillStyle`) en proyectiles del jefe elimina la sobrecarga de texturas procedimentales a alta tasa de disparo.
 - **Monitor de Rendimiento Cero React State**: El cálculo de FPS se realiza midiendo los cuadros por cada período de refresco de 500ms utilizando `performance.now()`. Al dibujarse directamente en el contexto del canvas con `ctx.fillText`, se evita desencadenar re-renders de React y el parpadeo constante, y se implementa una codificación semáforo de colores (Verde > 45 FPS, Amarillo > 30 FPS, Rojo <= 30 FPS).
 
+---
+
+### Sprint Polish-Pass — Ajustes de Pulido: UX & Pipeline Gráfico
+
+**Objetivo:** Pulir y optimizar la experiencia visual en PC. Resolver el orden de capas de proyectiles en la oscuridad, evitar la salida involuntaria del modo pantalla completa de los navegadores mediante teclas conflictivas, y eliminar parpadeos/pop-in de imágenes de la UI usando precarga ansiosa.
+
+**Archivos afectados:**
+
+| Archivo | Cambio |
+|---|---|
+| `src/scenes/DungeonScene.tsx` | Reubicado el bucle de dibujado de proyectiles del jugador para que se ejecute después del renderizado del overlay de la viñeta de oscuridad. |
+| `src/components/ui/CraftingModal.tsx` | Cambiado el listener de cierre de `Escape` a la tecla `X` / `x` y modificado el botón visual para indicar "Cerrar (X)", evitando la salida involuntaria de Fullscreen del navegador. |
+| `src/App.tsx` | Importado `loadImage` y los tres assets de imagen pesados de UI (`ventana-muerte.png`, `victoria-jugador.png` y `guia.png`) para precargarlos ansiosamente en el montaje inicial del juego. |
+
+**Decisiones de ingeniería:**
+
+- **Orden de Capas Gráficas**: Al desvincular los proyectiles del jugador del Y-sorting general y dibujarlos directamente después del overlay de la viñeta de oscuridad, se crea el efecto de que la magia del jugador brilla en la oscuridad por encima de la capa negra.
+- **Evitar Escape Key Conflict**: La tecla `Escape` tiene un comportamiento nativo inmutable en navegadores que desactiva el modo Pantalla Completa. Mapear el atajo del modal a la tecla `X` previene esta interrupción de UX manteniendo la pantalla completa intacta.
+- **Precarga Ansiosa (Eager Preloading)**: Forzar la instanciación de elementos `new Image()` y setear sus fuentes en el arranque del juego almacena en caché las imágenes pesadas de los modales (Muerte, Victoria y Guía) de antemano, resultando en transiciones de UI instantáneas y sin parpadeos.
+
 
 
 

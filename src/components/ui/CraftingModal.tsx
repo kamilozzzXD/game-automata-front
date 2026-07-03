@@ -68,11 +68,11 @@ export function CraftingModal() {
   // para colorear el feedback visual del caldero con su color caracteristico.
   const [lastPotionId, setLastPotionId] = useState<PotionId | null>(null)
 
-  // Cierra con ESC
+  // Cierra con X
   useEffect(() => {
     if (!isOpen) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close()
+      if (e.key.toLowerCase() === "x") close()
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
@@ -166,7 +166,7 @@ export function CraftingModal() {
             onClick={close}
             className="rounded-md px-3 py-1 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
           >
-            Cerrar (Esc)
+            Cerrar (X)
           </button>
         </div>
 

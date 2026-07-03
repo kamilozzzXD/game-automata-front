@@ -7,12 +7,23 @@ import { VictoryScreen } from "./components/ui/VictoryScreen"
 import { IntroCinematic } from "./components/ui/IntroCinematic"
 import { debounce } from "./utils/debounce"
 import { TouchControls } from "./components/ui/TouchControls"
+import { loadImage } from "./utils/assetLoader"
+import deathScreenImg from "./assets/ventana-muerte.png"
+import victoryScreenImg from "./assets/victoria-jugador.png"
+import guiaImg from "./assets/guia.png"
 
 function App() {
   const currentScene = useGameStore((s) => s.currentScene)
   const clearNotifications = useGameStore((s) => s.clearNotifications)
   const [showIntro, setShowIntro] = useState(true)
   const [scale, setScale] = useState(1)
+
+  useEffect(() => {
+    // Eager preloading de assets UI pesados para evitar lag/parpadeo al abrir modales
+    void loadImage(deathScreenImg)
+    void loadImage(victoryScreenImg)
+    void loadImage(guiaImg)
+  }, [])
 
   useEffect(() => {
     const calculateScale = () => {
