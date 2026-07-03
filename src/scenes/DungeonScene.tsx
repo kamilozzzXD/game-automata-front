@@ -510,6 +510,9 @@ export function DungeonScene() {
   // Sala actual del store (puede ser undefined entre transiciones).
   const currentNode =
     salaActualId !== null ? nodeMap.get(salaActualId) : undefined
+  // Ref para leer currentNode desde callbacks estáticos (drawDungeon, rAF)
+  const currentNodeRef = useRef(currentNode)
+  currentNodeRef.current = currentNode
   const currentConfig =
     salaActualId !== null ? roomConfigs.get(salaActualId) : undefined
 
@@ -1036,27 +1039,22 @@ export function DungeonScene() {
         pushNotification({ kind: "success", message: `Aceite de Punteria activo (${POTION_AIM_MS / 1000}s). Dano x${AIM_POTION_DAMAGE_MULT}.` })
         return
       }
-      // P3: Mezcla Volátil - ráfaga explosiva en 8 direcciones
+      // P3: Mezcla Volátil — ráfaga en 8 direcciones (push directo al ref)
       if (id === "P3") {
         const snap = useGameStore.getState()
         if (!bossPresent && !secretBossPresent) {
           pushNotification({ kind: "info", message: "No hay enemigos cerca para usar la Mezcla Volatil." })
           return
         }
-        const pCenter = center(snap.playerPosition, PLAYER_SIZE)
+        const cx = snap.playerPosition.x + 24
+        const cy = snap.playerPosition.y + 24
         const dirs = [
           { dx: 0, dy: -1 }, { dx: 0, dy: 1 }, { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
           { dx: 0.707, dy: -0.707 }, { dx: -0.707, dy: -0.707 }, { dx: 0.707, dy: 0.707 }, { dx: -0.707, dy: 0.707 }
         ]
-        setProyectiles((prev) => [
-          ...prev,
-          ...dirs.map((d, i) => ({
-            id: Date.now() + i,
-            x: pCenter.x, y: pCenter.y,
-            dx: d.dx, dy: d.dy,
-            distanciaRecorrida: 0,
-          }))
-        ])
+        for (const d of dirs) {
+          proyectilesRef.current.push({ id: Date.now() + Math.random(), x: cx, y: cy, dx: d.dx, dy: d.dy, distanciaRecorrida: 0 })
+        }
         pushNotification({ kind: "success", message: "¡BOOM! La Mezcla Volatil explota en 8 direcciones." })
         return
       }
@@ -1113,90 +1111,24 @@ export function DungeonScene() {
   })
 
   // -------------------------------------------------------------------------
-  // Tarea 3.1 - Sistema de combate del jugador (proyectiles).
-  //
-  // Diseno:
-  //   - Estado LOCAL de la escena (no del store global) para evitar
-  //     re-renders innecesarios en componentes ajenos al combate.
-  //   - El disparo se habilita SOLO cuando el jugador esta en la sala
-  //     del jefe (`bossPresent`), porque es donde hay un objetivo.
-  //   - El movimiento de los proyectiles vive en un unico useEffect con
-  //     requestAnimationFrame: actualiza posiciones, descarta los que
-  //     se pasan de distancia/salen de pantalla y revisa AABB contra
-  //     el jefe en cada frame.
+  // Tarea 4 — Proyectiles del jugador (Batch Drawing, DOM-free).
+  // Array mutable puro: React nunca lo observa → cero re-renders por disparo.
   // -------------------------------------------------------------------------
-  const [proyectiles, setProyectiles] = useState<ProjectileState[]>([])
-  // Ref para acceder al array fresco dentro del rAF sin meter dependencia.
   const proyectilesRef = useRef<ProjectileState[]>([])
-  proyectilesRef.current = proyectiles
-  // Ref para el cooldown del disparo (no necesita causar re-render).
+  // Cooldown entre disparos
   const lastShotAtRef = useRef<number>(0)
-  // Ref para controlar el cooldown de daño al pisar trampas (lava/picos)
+  // Cooldown de daño por trampas
   const lastHazardDamageTimeRef = useRef<number>(0)
-  // Ref para controlar el ritmo de advertencias de salida sellada (Tarea Guarida Sellada)
+  // Cooldown de advertencia de puerta sellada
   const lastExitWarnRef = useRef<number>(0)
-  // Para que cada proyectil tenga un id unico aun si se disparan dos
-  // en el mismo `Date.now()` (cooldown 180ms hace casi imposible la
-  // colision, pero esto vuelve el id determinista y a prueba de balas).
-  const projectileIdRef = useRef<number>(0)
 
-  // Listener de la tecla J -> spawn de proyectil.
-  // Solo activo en la sala del jefe o sala secreta con enemigo vivo.
+  // Previene el comportamiento por defecto de la tecla J en el navegador durante el combate.
   useEffect(() => {
     if ((!bossPresent && !secretBossPresent) || !movementEnabled) return
 
     const handler = (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() !== "j") return
-      e.preventDefault()
-      const now = performance.now()
-
-      const snap = useGameStore.getState()
-      const dir = snap.lastDirection
-      // Defensa: si por algun motivo el vector es (0,0), no disparamos.
-      if (dir.x === 0 && dir.y === 0) return
-
-      // P8/P10: cooldown efectivo segun pociones activas.
-      const effectiveCooldown = snap.isExtremeCadenceActive
-        ? 0
-        : snap.isHyperReflexesActive
-          ? SHOOT_COOLDOWN_MS / 2
-          : SHOOT_COOLDOWN_MS
-
-      if (now - lastShotAtRef.current < effectiveCooldown) return
-      lastShotAtRef.current = now
-
-      const playerCenter = center(snap.playerPosition, PLAYER_SIZE)
-
-      if (snap.isMultiShotActive) {
-        // P7: triple disparo con ligera apertura angular.
-        const angle = Math.atan2(dir.y, dir.x)
-        const spread = Math.PI / 10 // 18 grados de apertura
-        const offsets = [-spread, 0, spread]
-        setProyectiles((prev) => [
-          ...prev,
-          ...offsets.map((off) => {
-            projectileIdRef.current += 1
-            return {
-              id: projectileIdRef.current,
-              x: playerCenter.x,
-              y: playerCenter.y,
-              dx: Math.cos(angle + off),
-              dy: Math.sin(angle + off),
-              distanciaRecorrida: 0,
-            }
-          }),
-        ])
-      } else {
-        projectileIdRef.current += 1
-        const nuevo: ProjectileState = {
-          id: projectileIdRef.current,
-          x: playerCenter.x,
-          y: playerCenter.y,
-          dx: dir.x,
-          dy: dir.y,
-          distanciaRecorrida: 0,
-        }
-        setProyectiles((prev) => [...prev, nuevo])
+      if (e.key.toLowerCase() === "j") {
+        e.preventDefault()
       }
     }
 
@@ -1204,187 +1136,11 @@ export function DungeonScene() {
     return () => window.removeEventListener("keydown", handler)
   }, [bossPresent, secretBossPresent, movementEnabled])
 
-  // Game loop de los proyectiles + colisiones.
-  // Se relanza cuando cambia la sala (bossPresent o bossPosition) y se
-  // detiene si no hay proyectiles activos para no quemar CPU sin razon.
+  // Limpia el array cuando el jugador abandona las salas de combate.
   useEffect(() => {
     if (!bossPresent && !secretBossPresent) {
-      // Salimos de la sala: limpiamos los proyectiles vivos
-      if (proyectilesRef.current.length > 0) setProyectiles([])
-      return
+      proyectilesRef.current = []
     }
-
-    let rafId = 0
-    const tick = () => {
-      const current = proyectilesRef.current
-      if (current.length === 0) {
-        // Nada que mover; pausa el loop hasta que vuelva a haber.
-        rafId = requestAnimationFrame(tick)
-        return
-      }
-
-      // Rect del jefe para la colision AABB. Tarea 3.2: el jefe se mueve,
-      // asi que tomamos su posicion fresca via ref en cada frame en vez
-      // de capturarla por closure (sino "fallariamos" a un fantasma).
-      const bossPos = bossPositionRef.current
-      const bossSize = BOSS_SIZE
-
-      const next: ProjectileState[] = []
-      for (const p of current) {
-        const nx = p.x + p.dx * PROJECTILE_SPEED
-        const ny = p.y + p.dy * PROJECTILE_SPEED
-        const nDist = p.distanciaRecorrida + PROJECTILE_SPEED
-
-        // Missing por distancia recorrida.
-        if (nDist > PROJECTILE_MAX_DISTANCE) continue
-        // Missing por salir del mundo (con un margen del tamano del proyectil).
-        if (
-          nx < -PROJECTILE_SIZE.width ||
-          nx > WORLD_SIZE.width + PROJECTILE_SIZE.width ||
-          ny < -PROJECTILE_SIZE.height ||
-          ny > WORLD_SIZE.height + PROJECTILE_SIZE.height
-        ) {
-          continue
-        }
-
-        // Hit: AABB del proyectil vs AABB del objetivo activo.
-        const projPos: Vector2D = {
-          x: nx - PROJECTILE_SIZE.width / 2,
-          y: ny - PROJECTILE_SIZE.height / 2,
-        }
-
-        let targetPos: Vector2D | null = null
-        let targetSize = BOSS_SIZE
-        if (bossPresent) targetPos = bossPositionRef.current
-        else if (secretBossPresent) targetPos = miniBossPositionRef.current
-
-        if (targetPos && intersectsAABB(projPos, PROJECTILE_SIZE, targetPos, targetSize)) {
-          if (bossPresent) {
-            // Fase 4 (3.2): Enviar estímulo "h" al Jefe
-            const curState = useGameStore.getState().bossState
-            if (curState !== "C") {
-              void bossAction({ estado_actual: curState, estimulo: "h" }).then((res) => {
-                const newState = parseBossState(res.nuevo_estado)
-                if (newState) {
-                  useGameStore.getState().setBossState(newState)
-                  useGameStore.getState().setBossAction(res.accion as BossAction)
-                }
-              }).catch((err) => {
-                console.error("[v0] Error en bossAction (near miss):", err)
-              })
-            }
-
-            // Tarea 3.3: Calcular daño al jefe (P2: Aceite de Puntería aplica x1.5)
-            const phaseAtHit = useGameStore.getState().bossLives
-            const hpAtHit = useGameStore.getState().bossHp
-            if (phaseAtHit > 0) {
-              const aimMult = useGameStore.getState().isPotionAimActive ? AIM_POTION_DAMAGE_MULT : 1
-              void combatHit({
-                hp_actual: hpAtHit,
-                dano_recibido: Math.round(PLAYER_PROJECTILE_DAMAGE * aimMult),
-              }).then((res) => {
-                const currentStore = useGameStore.getState()
-                // Si la fase ya cambió en el store o el jefe ya murió, descartamos este daño residual
-                if (currentStore.bossLives !== phaseAtHit || currentStore.bossLives === 0) {
-                  return
-                }
-
-                currentStore.applyBossDamage(res.hp_resultante)
-
-                const postStore = useGameStore.getState()
-                if (res.hp_resultante === 0 && postStore.bossLives === 0) {
-                  setKeySpawned(true)
-                  setKeyPosition({ ...bossPositionRef.current })
-                  pushNotification({
-                    kind: "success",
-                    message: "¡El Jefe ha sido derrotado! Una misteriosa Llave Dorada ha aparecido sobre un pedestal de luz.",
-                  })
-                }
-              }).catch((err) => {
-                console.error("[v0] Error en combatHit (jefe):", err)
-              })
-            }
-          } else if (secretBossPresent) {
-            // Estímulo al MiniBoss
-            const curState = useGameStore.getState().miniBossState
-            if (curState !== "C") {
-              void bossAction({ estado_actual: curState, estimulo: "h" }).then((res) => {
-                const newState = parseBossState(res.nuevo_estado)
-                if (newState) {
-                  useGameStore.getState().setMiniBossState(newState)
-                  useGameStore.getState().setMiniBossAction(res.accion as never)
-                }
-              }).catch((err) => {
-                console.error("[v0] Error en bossAction (near miss MiniBoss):", err)
-              })
-            }
-
-            // Calcular daño al mini jefe con API de Turing (P2: x1.5 si activo)
-            const currentMiniBossHp = useGameStore.getState().miniBossHp
-            if (currentMiniBossHp > 0 && currentNode) {
-              const aimMult = useGameStore.getState().isPotionAimActive ? AIM_POTION_DAMAGE_MULT : 1
-              void combatHit({
-                hp_actual: currentMiniBossHp,
-                dano_recibido: Math.round(PLAYER_PROJECTILE_DAMAGE * aimMult),
-              }).then((res) => {
-                // Si el mini-boss ya fue derrotado por otro proyectil concurrente, ignoramos
-                if (useGameStore.getState().miniBossHp === 0) return
-
-                useGameStore.getState().applyMiniBossDamage(currentNode.id, res.hp_resultante)
-              }).catch((err) => {
-                console.error("[v0] Error en combatHit (mini-jefe):", err)
-              })
-            }
-          }
-          continue
-        }
-
-        // Near miss check (Solo para el Jefe Principal de momento)
-        let didTriggerNearMiss = p.triggeredNearMiss ?? false
-
-        if (!didTriggerNearMiss && targetPos && bossPresent) {
-          const bossCenter = center(bossPos, bossSize)
-          const projCenter: Vector2D = { x: nx, y: ny }
-          const distToBoss = distance(projCenter, bossCenter)
-          // El umbral es el radio del jefe (mitad de la diagonal aprox) + margen.
-          const bossRadius = Math.max(bossSize.width, bossSize.height) / 2
-          const nearMissThreshold = bossRadius + BOSS_NEAR_MISS_THRESHOLD
-
-          if (distToBoss < nearMissThreshold) {
-            didTriggerNearMiss = true
-            // El proyectil pasó muy cerca: despertar al jefe si no está en C.
-            const curState = useGameStore.getState().bossState
-            if (curState !== "C") {
-              void bossAction({ estado_actual: curState, estimulo: "h" }).then((res) => {
-                const newState = parseBossState(res.nuevo_estado)
-                if (newState) {
-                  useGameStore.getState().setBossState(newState)
-                  useGameStore.getState().setBossAction(res.accion as BossAction)
-                }
-              }).catch((err) => {
-                console.error("[v0] Error en bossAction (near miss):", err)
-              })
-            }
-          }
-        }
-
-        next.push({ ...p, x: nx, y: ny, distanciaRecorrida: nDist, triggeredNearMiss: didTriggerNearMiss })
-      }
-
-      // Solo actualizamos el state si hubo cambio real (movimiento o muerte
-      // de algun proyectil). Comparar por longitud + referencia es barato.
-      if (
-        next.length !== current.length ||
-        next.some((p, i) => p !== current[i])
-      ) {
-        setProyectiles(next)
-      }
-
-      rafId = requestAnimationFrame(tick)
-    }
-
-    rafId = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(rafId)
   }, [bossPresent, secretBossPresent])
 
   // ===========================================================================
@@ -1830,10 +1586,13 @@ export function DungeonScene() {
   // ---------------------------------------------------------------------------
   const isBossFurious = useGameStore((s) => s.isBossFurious)
 
-  // Ref para que el draw callback sepa si estamos en la sala del jefe
-  // (bossPresent es una variable local React, no del store).
+  // Refs para que drawDungeon lea bossPresent/secretBossPresent sin stale closure.
   const bossRoomRef = useRef(bossPresent)
   bossRoomRef.current = bossPresent
+  const secretBossRoomRef = useRef(secretBossPresent)
+  secretBossRoomRef.current = secretBossPresent
+  const movementEnabledRef = useRef(movementEnabled)
+  movementEnabledRef.current = movementEnabled
 
   // Ref a la textura del jugador (evita drawImage con string crudo)
   const playerSpriteRef = useRef<HTMLImageElement | null>(null)
@@ -1871,6 +1630,143 @@ export function DungeonScene() {
       vign.addColorStop(1, "rgba(3,7,18,0.98)")
       ctx.fillStyle = vign
       ctx.fillRect(0, 0, w, h)
+    }
+
+    // --- Proyectiles del jugador (Batch Drawing, Tarea 4) ---
+    // Generación de proyectiles continua al mantener presionada la tecla J (sin re-renders de React)
+    if (movementEnabledRef.current && (bossRoomRef.current || secretBossRoomRef.current) && keysRef.current.has("j")) {
+      const now = performance.now()
+      const snap = useGameStore.getState()
+      const dir = snap.lastDirection
+      if (dir.x !== 0 || dir.y !== 0) {
+        const effectiveCooldown = snap.isExtremeCadenceActive
+          ? 0
+          : snap.isHyperReflexesActive
+            ? SHOOT_COOLDOWN_MS / 2
+            : SHOOT_COOLDOWN_MS
+        if (now - lastShotAtRef.current >= effectiveCooldown) {
+          lastShotAtRef.current = now
+          const cx = snap.playerPosition.x + 24
+          const cy = snap.playerPosition.y + 24
+          if (snap.isMultiShotActive) {
+            const angle = Math.atan2(dir.y, dir.x)
+            const spread = Math.PI / 10
+            for (const off of [-spread, 0, spread]) {
+              proyectilesRef.current.push({
+                id: Date.now() + Math.random(),
+                x: cx, y: cy,
+                dx: Math.cos(angle + off),
+                dy: Math.sin(angle + off),
+                distanciaRecorrida: 0,
+              })
+            }
+          } else {
+            proyectilesRef.current.push({
+              id: Date.now(),
+              x: cx, y: cy,
+              dx: dir.x, dy: dir.y,
+              distanciaRecorrida: 0,
+            })
+          }
+        }
+      }
+    }
+
+    // Física + colisión + dibujo en el mismo frame; DOM permanece estático.
+    const projs = proyectilesRef.current
+    for (let i = projs.length - 1; i >= 0; i--) {
+      const p = projs[i]
+      p.x += p.dx * PROJECTILE_SPEED
+      p.y += p.dy * PROJECTILE_SPEED
+      p.distanciaRecorrida += PROJECTILE_SPEED
+
+      // Limpieza por distancia / fuera de pantalla
+      if (
+        p.distanciaRecorrida > PROJECTILE_MAX_DISTANCE ||
+        p.x < 0 || p.x > w || p.y < 0 || p.y > h
+      ) {
+        projs.splice(i, 1)
+        continue
+      }
+
+      // AABB hit vs jefe activo
+      const projPos: Vector2D = { x: p.x - PROJECTILE_SIZE.width / 2, y: p.y - PROJECTILE_SIZE.height / 2 }
+      let targetPos: Vector2D | null = null
+      if (bossRoomRef.current) targetPos = bossPositionRef.current
+      else if (secretBossRoomRef.current) targetPos = miniBossPositionRef.current
+
+      if (targetPos && intersectsAABB(projPos, PROJECTILE_SIZE, targetPos, BOSS_SIZE)) {
+        projs.splice(i, 1)
+        if (bossRoomRef.current) {
+          const curState = useGameStore.getState().bossState
+          if (curState !== "C") {
+            void bossAction({ estado_actual: curState, estimulo: "h" }).then((res) => {
+              const ns = parseBossState(res.nuevo_estado)
+              if (ns) { useGameStore.getState().setBossState(ns); useGameStore.getState().setBossAction(res.accion as BossAction) }
+            })
+          }
+          const phaseAtHit = useGameStore.getState().bossLives
+          const hpAtHit = useGameStore.getState().bossHp
+          if (phaseAtHit > 0) {
+            const aimMult = useGameStore.getState().isPotionAimActive ? AIM_POTION_DAMAGE_MULT : 1
+            void combatHit({ hp_actual: hpAtHit, dano_recibido: Math.round(PLAYER_PROJECTILE_DAMAGE * aimMult) }).then((res) => {
+              const s = useGameStore.getState()
+              if (s.bossLives !== phaseAtHit || s.bossLives === 0) return
+              s.applyBossDamage(res.hp_resultante)
+              if (res.hp_resultante === 0 && useGameStore.getState().bossLives === 0) {
+                setKeySpawned(true)
+                setKeyPosition({ ...bossPositionRef.current })
+                pushNotification({ kind: "success", message: "¡El Jefe ha sido derrotado! Una Llave Dorada aparece sobre un pedestal." })
+              }
+            })
+          }
+        } else if (secretBossRoomRef.current) {
+          const curState = useGameStore.getState().miniBossState
+          if (curState !== "C") {
+            void bossAction({ estado_actual: curState, estimulo: "h" }).then((res) => {
+              const ns = parseBossState(res.nuevo_estado)
+              if (ns) { useGameStore.getState().setMiniBossState(ns); useGameStore.getState().setMiniBossAction(res.accion as never) }
+            })
+          }
+          const hp = useGameStore.getState().miniBossHp
+          const node = currentNodeRef.current
+          if (hp > 0 && node) {
+            const aimMult = useGameStore.getState().isPotionAimActive ? AIM_POTION_DAMAGE_MULT : 1
+            void combatHit({ hp_actual: hp, dano_recibido: Math.round(PLAYER_PROJECTILE_DAMAGE * aimMult) }).then((res) => {
+              if (useGameStore.getState().miniBossHp === 0) return
+              useGameStore.getState().applyMiniBossDamage(node.id, res.hp_resultante)
+            })
+          }
+        }
+        continue
+      }
+
+      // Near miss (solo jefe principal)
+      if (!p.triggeredNearMiss && bossRoomRef.current && targetPos) {
+        const bossCenter = center(bossPositionRef.current, BOSS_SIZE)
+        const distToBoss = distance({ x: p.x, y: p.y }, bossCenter)
+        const nearMissThreshold = Math.max(BOSS_SIZE.width, BOSS_SIZE.height) / 2 + BOSS_NEAR_MISS_THRESHOLD
+        if (distToBoss < nearMissThreshold) {
+          p.triggeredNearMiss = true
+          const curState = useGameStore.getState().bossState
+          if (curState !== "C") {
+            void bossAction({ estado_actual: curState, estimulo: "h" }).then((res) => {
+              const ns = parseBossState(res.nuevo_estado)
+              if (ns) { useGameStore.getState().setBossState(ns); useGameStore.getState().setBossAction(res.accion as BossAction) }
+            })
+          }
+        }
+      }
+
+      // Dibujo con halo incandescente (GPU shadowBlur)
+      ctx.save()
+      ctx.shadowBlur = 8
+      ctx.shadowColor = "#eab308"
+      ctx.fillStyle = "#eab308"
+      ctx.beginPath()
+      ctx.arc(p.x, p.y, 6, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.restore()
     }
 
     // --- Jugador (sprite clipping LPC) ---
@@ -1986,19 +1882,7 @@ export function DungeonScene() {
           />
         ))}
 
-        {/* Proyectiles del jugador (Tarea 3.1).
-            Se renderizan SIEMPRE que haya entradas vivas en el array.
-            La logica del game loop ya se asegura de vaciar el array al
-            salir de la sala del jefe. */}
-        {proyectiles.map((p) => (
-          <Projectile
-            key={p.id}
-            x={p.x}
-            y={p.y}
-            size={PROJECTILE_SIZE.width}
-            variant="player"
-          />
-        ))}
+        {/* Proyectiles del jugador: dibujados en canvas (ver drawDungeon) */}
 
         {/* Ingredientes esparcidos por la sala (si los hay) */}
         {currentNode?.ingredientes && currentNode.ingredientes.map((ing, idx) => {

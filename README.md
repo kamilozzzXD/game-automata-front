@@ -107,3 +107,24 @@ src/
 - **Vignette en canvas**: Al dibujar la oscuridad dentro del bucle rAF (antes del sprite), el personaje siempre aparece *dentro* del cono de luz, sin necesidad de z-index elevado en el DOM.
 - **`bossRoomRef`**: Un ref actualizado en cada render permite que el draw callback (closure asíncrona) lea el estado de `bossPresent` sin capturarlo como valor obsoleto.
 - **`pointer-events-none` en canvas**: El canvas recibe el atributo para que los clics no se bloqueen y alcancen los elementos UI superpuestos.
+
+---
+
+### Tarea 4 — Sistema de Proyectiles del Jugador (Batch Drawing)
+
+**Objetivo:** Migrar los proyectiles del jugador del DOM y de ciclos reactivos de React a una referencia TypeScript pura y dibujado por lotes acelerado por hardware dentro de la capa del canvas.
+
+**Archivos afectados:**
+
+| Archivo | Cambio |
+|---|---|
+| `src/scenes/DungeonScene.tsx` | Eliminado el estado de proyectiles reactivo, modificado el crafteo de `P3` (Mezcla Volátil) y el listener de teclado para interactuar mediante `useRef`, e implementado el procesamiento de física, lógica de daño y renderizado con glow en el canvas draw loop. |
+
+**Decisiones de ingeniería:**
+
+- **Física Silenciosa e Inercia de Renders**: Los proyectiles del mago se almacenan en `proyectilesRef` (`useRef`). Al presionar la tecla J, se inyectan elementos al array del ref. Cero re-renders de React disparados en combate por proyectiles.
+- **Disparo Continuo en rAF**: Se lee el estado del input mediante `keysRef.current.has("j")` a 60 FPS dentro de `drawDungeon`. Esto permite disparar ráfagas fluidas a la tasa exacta de cooldown configurada por pociones activas, saltándose limitaciones y retrasos de eventos de teclado de los navegadores.
+- **Filtro de Memoria Invertido**: La remoción de proyectiles (por impacto, fuera de límites o rango) se realiza con un bucle invertido (`for (let i = arr.length - 1; i >= 0; i--)`), garantizando mutaciones estables in-situ sin desfases de índices.
+- **Nacimiento desde el Centro**: El cálculo geométrico inicial del proyectil inicia en el punto central real de la colisión del mago (`x + 24`, `y + 24`).
+- **Glow nativo acelerado**: Se aplica `shadowBlur = 8` y `shadowColor = "#eab308"` nativo en el contexto 2D de canvas para lograr proyectiles incandescentes sin sobrecarga de nodos DOM.
+
